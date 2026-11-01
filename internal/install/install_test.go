@@ -52,7 +52,7 @@ func TestInstallForeverRewritesInterface(t *testing.T) {
 		t.Fatal(err)
 	}
 	toc, _ := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "Sagalore", "Sagalore.toc"))
-	if !strings.Contains(string(toc), "Interface: 120000") {
+	if !strings.Contains(string(toc), "Interface: 120105") {
 		t.Fatalf("retail toc:\n%s", toc)
 	}
 }
