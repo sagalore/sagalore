@@ -131,7 +131,12 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Package addon and checksums
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
+          for toc in addon/Sagalore/*.toc; do
+            sed -i "s/^## Version:.*/## Version: ${VERSION}/" "$toc"
+          done
           (cd addon && zip -r ../dist/Sagalore-addon.zip Sagalore)
           cd dist
           sha256sum * > SHA256SUMS

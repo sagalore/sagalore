@@ -1,6 +1,6 @@
 ## Interface: 20506
 ## Title: Sagalore
-## Notes: A saga log for a World of Warcraft group
+## Notes: Shared sagas for your group. Requires the Sagalore companion from sagalore.app.
 ## Author: Sagalore
 ## Version: 0.1.0
 ## SavedVariablesPerCharacter: SagaloreDB
