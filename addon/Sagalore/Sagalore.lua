@@ -3047,7 +3047,17 @@ refresh = function()
         end
     end
     local allDoneInfo = selectedEntry == nil and #openList == 0 and #doneList > 0
-    if allDoneInfo then
+    -- Same empty chrome as all-done: board (no parchment), gold title, create URL.
+    local askInviteInfo = selectedEntry == nil
+        and #entries == 0
+        and player.name ~= ""
+        and type(SagaloreData) == "table"
+        and type(SagaloreData.entries) == "table"
+        and #SagaloreData.entries > 0
+        and type(SagaloreInvite) == "table"
+        and type(SagaloreInvite.onlyPersonalGroups) == "function"
+        and SagaloreInvite.onlyPersonalGroups(SagaloreData)
+    if allDoneInfo or askInviteInfo then
         SagaloreBoard.applyBoardSkin()
     else
         SagaloreBoard.applyLogSkin()
@@ -3184,32 +3194,31 @@ refresh = function()
         end
         SagaloreBoard.hideActivitySort()
         local showCreateURL = false
-        if allDoneInfo then
-            -- Use the same FontString as parchment section headers ("Description" /
+        local function placeEmptyInfo(titleKey, bodyKey)
+            -- Same FontString as parchment section headers ("Description" /
             -- "Activity") — QuestTitleFont. Avoid SetFont(); on Classic it can
             -- permanently detach the inherit and fall back to body size.
             detailGoalsHeader:Show()
-            detailGoalsHeader:SetText(L("ui.all_done"))
+            detailGoalsHeader:SetText(L(titleKey))
             detailGoalsHeader:SetTextColor(1, 0.86, 0.45)
             detailGoalsHeader:SetWidth(width)
             detailGoalsHeader:ClearAllPoints()
             detailGoalsHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
             detailY = detailY + (detailGoalsHeader:GetStringHeight() or 20) + 12
-            detailFS:SetText(L("ui.all_done_body"))
+            detailFS:SetText(L(bodyKey))
             detailFS:SetTextColor(0.9, 0.84, 0.7)
             showCreateURL = true
+        end
+        if allDoneInfo then
+            placeEmptyInfo("ui.all_done", "ui.all_done_body")
+        elseif askInviteInfo then
+            placeEmptyInfo("ui.ask_invite", "ui.ask_invite_body")
         elseif player.name == "" then
             detailFS:SetText(L("ui.login_character"))
             detailFS:SetTextColor(INK.r, INK.g, INK.b)
         elseif type(SagaloreData) ~= "table" or type(SagaloreData.entries) ~= "table" or #SagaloreData.entries == 0 then
             detailFS:SetText(L("ui.no_sagas"))
             detailFS:SetTextColor(INK.r, INK.g, INK.b)
-        elseif #currentEntries() == 0
-            and type(SagaloreInvite) == "table" and type(SagaloreInvite.onlyPersonalGroups) == "function"
-            and SagaloreInvite.onlyPersonalGroups(SagaloreData) then
-            detailFS:SetText(L("ui.ask_invite"))
-            detailFS:SetTextColor(INK.r, INK.g, INK.b)
-            showCreateURL = true
         else
             detailFS:SetText(string.format(L("ui.no_sagas_for"), player.name))
             detailFS:SetTextColor(INK.r, INK.g, INK.b)
@@ -3219,8 +3228,7 @@ refresh = function()
         detailFS:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
         detailY = detailY + (detailFS:GetStringHeight() or 14) + 8
         if showCreateURL then
-            local urlColor = allDoneInfo and { r = 0.55, g = 0.78, b = 1 } or { r = 0.2, g = 0.35, b = 0.7 }
-            detailY = SagaloreBoard.placeCreateURL(detailY, width, urlColor)
+            detailY = SagaloreBoard.placeCreateURL(detailY, width, { r = 0.55, g = 0.78, b = 1 })
         else
             SagaloreBoard.hideCreateURL()
         end
