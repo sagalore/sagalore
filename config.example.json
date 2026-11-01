@@ -1,0 +1,10 @@
+{
+  "api_base_url": "http://localhost:8080",
+  "session_token": "",
+  "wow_path": "",
+  "client": "retail",
+  "update": {
+    "repo": "sagalore/sagalore",
+    "enabled": true
+  }
+}

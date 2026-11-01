@@ -1,0 +1,11 @@
+/sagalore
+/sagalore-api
+/sagalore.exe
+/dist/
+.wrangler/
+*.exe
+.env
+config.json
+/api/tmp/
+.DS_Store
+docker-compose.override.yml

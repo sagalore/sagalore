@@ -1,0 +1,12 @@
+# WoW TOC interface numbers. Keep these in sync with the .toc files.
+# Confirm in game with /dump select(4, GetBuildInfo()).
+# Forever (beta, client 1.60.1): Sagalore_Forever.toc and Sagalore.toc.
+# Retail Midnight: Sagalore_Mainline.toc.
+# Classic Era 1.15.9 (_classic_era_): Sagalore_Vanilla.toc. Wiki Vanilla, 2026-10-22.
+# Mists Classic 5.5.4 (_classic_): Sagalore_Mists.toc. Wiki Mists, 2026-10-22.
+# Anniversary is TBC 2.5.6 (_anniversary_): Sagalore_TBC.toc. Wiki TBC, 2026-10-22.
+FOREVER=16001
+MAINLINE=120000
+VANILLA=11509
+MISTS=50504
+TBC=20506

@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sagalore
+          POSTGRES_PASSWORD: sagalore
+          POSTGRES_DB: sagalore_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sagalore -d sagalore_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://sagalore:sagalore@localhost:5432/sagalore_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Test
+        run: go test ./... -count=1 -timeout 3m
+      - name: Build API and Windows companion
+        run: |
+          CGO_ENABLED=0 go build -o /tmp/sagalore-api ./api
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/sagalore.exe ./cmd/sagalore
+      - name: luacheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1 luarocks
+          sudo luarocks install luacheck
+          luacheck addon
+          lua5.1 addon/objectives_test.lua
+          lua5.1 addon/chains_test.lua
+          lua5.1 addon/invite_test.lua
+
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: next
+        run: echo "version=$(bash scripts/next-version.sh)" >> "$GITHUB_OUTPUT"
+
+  package:
+    name: Build ${{ matrix.asset }}
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            asset: sagalore-darwin-arm64
+            cgo: "1"
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            asset: sagalore-darwin-amd64
+            cgo: "1"
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            asset: sagalore-windows-amd64.exe
+            cgo: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Build companion
+        shell: bash
+        env:
+          CGO_ENABLED: ${{ matrix.cgo }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ needs.version.outputs.version }}
+          # Official builds bake the public API URL. Empty leaves --api-url required.
+          SAGALORE_API_URL: ${{ vars.SAGALORE_API_URL }}
+        run: |
+          if [ "$GOOS" = "darwin" ] && [ "$GOARCH" = "amd64" ]; then
+            export CC="clang -arch x86_64"
+            export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+          fi
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -X github.com/sagalore/sagalore/internal/version.Version=${VERSION} -X github.com/sagalore/sagalore/internal/version.DefaultAPIBaseURL=${SAGALORE_API_URL}" -o "dist/${{ matrix.asset }}" ./cmd/sagalore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, package, version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Package addon and checksums
+        run: |
+          (cd addon && zip -r ../dist/Sagalore-addon.zip Sagalore)
+          cd dist
+          sha256sum * > SHA256SUMS
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            gh release upload "v${VERSION}" dist/* --clobber
+            exit 0
+          fi
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="v${VERSION}" \
+            -f target_commitish="${GITHUB_SHA}" \
+            --jq '.body // ""' > notes.md
+          {
+            echo ""
+            echo "## Downloads"
+            echo ""
+            echo "- \`sagalore-darwin-arm64\` and \`sagalore-darwin-amd64\` (macOS)"
+            echo "- \`sagalore-windows-amd64.exe\`"
+            echo "- \`Sagalore-addon.zip\`"
+            echo "- \`SHA256SUMS\`"
+            echo ""
+            echo "The binaries are not signed."
+          } >> notes.md
+          gh release create "v${VERSION}" dist/* \
+            --target "${GITHUB_SHA}" \
+            --title "Sagalore v${VERSION}" \
+            --notes-file notes.md

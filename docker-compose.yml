@@ -1,0 +1,46 @@
+# Local development only. Production hosts build api/Dockerfile and set
+# ADMIN_TOKEN / IMAGE_URL_SECRET (and the rest) in that environment.
+# The known defaults below (dev-admin-token, …) are rejected at API startup unless
+# SAGALORE_ALLOW_DEV_SECRETS=1, so they cannot silently ship to production.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: sagalore
+      POSTGRES_PASSWORD: sagalore
+      POSTGRES_DB: sagalore
+    ports:
+      - "5432:5432"
+    volumes:
+      - sagalore-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sagalore -d sagalore"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      DATABASE_URL: postgres://sagalore:sagalore@postgres:5432/sagalore?sslmode=disable
+      ADMIN_TOKEN: dev-admin-token
+      IMAGE_URL_SECRET: dev-image-url-secret
+      SAGALORE_ALLOW_DEV_SECRETS: "1"
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      SAGALORE_DEV_TOKEN: ${SAGALORE_DEV_TOKEN:-}
+      BNET_CLIENT_ID: ${BNET_CLIENT_ID:-}
+      BNET_CLIENT_SECRET: ${BNET_CLIENT_SECRET:-}
+      # slug:Name for the local tutorial group. A fresh database does nothing until seed creates sagas.
+      SAGALORE_BOOTSTRAP_GROUP: ${SAGALORE_BOOTSTRAP_GROUP:-tutorial:Tutorial}
+      # Optional: copied once onto the bootstrap group when its webhook is empty.
+      SAGALORE_BOOTSTRAP_WEBHOOK_URL: ${SAGALORE_BOOTSTRAP_WEBHOOK_URL:-}
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  sagalore-pg:

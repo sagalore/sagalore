@@ -1,0 +1,17 @@
+## Interface: 50504
+## Title: Sagalore
+## Notes: A saga log for a World of Warcraft group
+## Author: Sagalore
+## Version: 0.1.0
+## SavedVariablesPerCharacter: SagaloreDB
+## IconTexture: Interface\AddOns\Sagalore\SagaloreList
+
+Locales/enUS.lua
+Locales/nbNO.lua
+Locales/locale.lua
+SagaloreLanguage.lua
+SagaloreData.lua
+SagaloreObjectives.lua
+SagaloreChains.lua
+SagaloreInvite.lua
+Sagalore.lua

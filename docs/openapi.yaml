@@ -1,0 +1,266 @@
+openapi: 3.0.3
+info:
+  title: Sagalore API
+  version: "0.3.0"
+  description: |
+    Battle.net login, groups, and sagas. Sessions are gss_. Personal tokens are gst_.
+    External clients use the OAuth 2.1 endpoints and receive a gst_ access token.
+    ADMIN_TOKEN cannot author sagas. See docs/API.md and docs/oauth.md.
+servers:
+  - url: https://sagalore.example.com
+paths:
+  /healthz:
+    get:
+      summary: Database health
+      responses:
+        "200":
+          description: ok
+  /v1/auth/bnet/start:
+    get:
+      summary: Redirect to Battle.net authorize (PKCE, openid wow.profile)
+      parameters:
+        - in: query
+          name: attempt
+          required: true
+          schema: {type: string}
+      responses:
+        "302":
+          description: Redirect to https://oauth.battle.net/authorize
+  /v1/auth/bnet/callback:
+    get:
+      summary: Exchange the code and store a gss_ session on the attempt
+      responses:
+        "200":
+          description: HTML the player can close
+  /v1/auth/bnet/poll:
+    get:
+      summary: Poll the attempt
+      parameters:
+        - in: query
+          name: attempt
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Session
+        "202":
+          description: Pending
+  /.well-known/oauth-authorization-server:
+    get:
+      summary: RFC 8414 authorization server metadata
+      responses:
+        "200":
+          description: issuer, endpoints, S256, supported scopes
+  /.well-known/oauth-protected-resource:
+    get:
+      summary: RFC 9728 protected resource metadata
+      responses:
+        "200":
+          description: resource and authorization server
+  /oauth/register:
+    post:
+      summary: RFC 7591 dynamic client registration
+      responses:
+        "201":
+          description: client_id, and client_secret once when the client is confidential
+  /oauth/authorize:
+    get:
+      summary: Authorization code + PKCE. Battle.net login, then consent.
+      responses:
+        "302":
+          description: Battle.net, or the client redirect after an error
+        "200":
+          description: Consent page when the browser is signed in
+    post:
+      summary: Approve or deny the consent page
+      responses:
+        "302":
+          description: Client redirect with code and state, or an error
+  /oauth/token:
+    post:
+      summary: Exchange a code or rotate a refresh token
+      responses:
+        "200":
+          description: gst_ access token and gsr_ refresh token
+  /oauth/revoke:
+    post:
+      summary: RFC 7009 token revocation
+      responses:
+        "200":
+          description: Revoked, or the token was unknown
+  /v1/auth/dev:
+    post:
+      summary: Dev token bypass. Does not call Blizzard.
+      responses:
+        "200":
+          description: Session
+        "401":
+          description: Bad token
+  /v1/groups:
+    get:
+      summary: Groups for the signed-in account
+      responses:
+        "200":
+          description: groups
+    post:
+      summary: Create a group
+      responses:
+        "201":
+          description: created
+  /v1/groups/{id}/invites:
+    get:
+      summary: Pending outgoing invites for an owner or member
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+        - in: query
+          name: status
+          schema: {type: string, enum: [pending]}
+      responses:
+        "200":
+          description: invites with name, realm, invited_at
+        "403":
+          description: not a member
+    post:
+      summary: Owner invites a character
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        "201":
+          description: pending invite
+  /v1/groups/{id}/invites/{inviteId}:
+    delete:
+      summary: Owner revokes a pending invite
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+        - in: path
+          name: inviteId
+          required: true
+          schema: {type: string}
+      responses:
+        "204":
+          description: revoked
+        "403":
+          description: not the owner
+        "409":
+          description: invite is not pending
+  /v1/me/invites:
+    get:
+      summary: Pending invites addressed to the caller
+      responses:
+        "200":
+          description: invites
+  /v1/invites/{id}/accept:
+    post:
+      summary: Accept. Joins the account and marks the character participating.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: accepted
+  /v1/invites/{id}/decline:
+    post:
+      summary: Decline. Permanent for this invite.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: declined
+  /v1/sagas:
+    get:
+      summary: Sagas in the caller's groups
+      responses:
+        "200":
+          description: sagas
+    post:
+      summary: Create a saga. group is a slug, or omitted when the player has one group.
+      responses:
+        "201":
+          description: created
+        "403":
+          description: not a member
+  /v1/groups/{id}/leaderboard:
+    get:
+      summary: Ranked characters by sagas completed in this group
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+        - in: query
+          name: period
+          schema: {type: string, enum: [all, month, week, today], default: all}
+      responses:
+        "200":
+          description: group_id, period, and ranked entries (name, realm, class, race, level, completed, last_completed_at)
+        "400":
+          description: period is not all, month, week, or today
+        "403":
+          description: caller is not a member
+  /v1/sagas/{id}:
+    get:
+      summary: One saga, including completed_by. Any group member.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+        - in: query
+          name: sort
+          schema: {type: string, enum: [completed_at, completion_time]}
+          description: completed_at is newest first. completion_time is shortest duration first, nulls last. Omit for oldest first.
+      responses:
+        "200":
+          description: saga detail with duration_sec on completed_by
+        "400":
+          description: sort is not recognized
+        "403":
+          description: caller is not a member of the saga's group
+  /v1/sync:
+    get:
+      summary: Sagas, progress, completions, and leaderboards for the caller's groups
+      responses:
+        "200":
+          description: sync, including duration_sec and leaderboards
+  /v1/me/tokens:
+    post:
+      summary: Mint a gst_ token. Returned once.
+      responses:
+        "201":
+          description: token
+  /v1/admin/groups/{id}:
+    delete:
+      summary: Ops. Delete the group and its sagas.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        "204":
+          description: deleted
+  /v1/admin/sagas/{id}:
+    delete:
+      summary: Ops. Hard-delete one saga.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        "204":
+          description: deleted
