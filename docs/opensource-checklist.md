@@ -16,22 +16,22 @@ Use this when moving from the private archive to the public `sagalore/sagalore` 
 
 ## Before the first public release
 
-- [ ] Create org repo `sagalore/sagalore` (private until ready)
-- [ ] Seed with a **clean initial commit** (or short curated series); keep the old private repo as archive
-- [ ] Set Actions variable `SAGALORE_API_URL` on the new repo
-- [ ] Apply pending API migrations on the hosted database (especially `016_realtime_sagalore_channel.sql`) before flipping companion builds that `LISTEN` on `sagalore_events`
-- [ ] Branch protection on `main` + required CI
-- [ ] Smoke a **pre-release** tag: download each OS asset, companion update path, addon zip install
+- [x] Create org repo `sagalore/sagalore` (private until ready)
+- [x] Seed with a **clean initial commit** (or short curated series); keep the old private repo as archive
+- [x] Set Actions variable `SAGALORE_API_URL` on the new repo
+- [x] Apply pending API migrations on the hosted database (especially `016_realtime_sagalore_channel.sql`) before flipping companion builds that `LISTEN` on `sagalore_events`
+- [ ] Branch protection on `main` + required CI (needs GitHub Pro on a private org repo, or make the repo public)
+- [x] Smoke release `v0.1.0` on `sagalore/sagalore`: all OS assets download; `https://api.sagalore.app` baked into companions; addon zip lists `Sagalore/` (full in-game install path not re-tested here)
 - [x] Marketing on separate host ([sagalore/website](https://github.com/sagalore/website)); API hostname separate
-- [ ] Confirm Discord OG still uses `https://sagalore.app/assets/og-image.jpg`
-- [ ] Grep seed tree: no host-vendor names; MCP platform named only in README honesty bullet (product deep links use sagalore.app)
+- [x] Confirm Discord OG still uses `https://sagalore.app/assets/og-image.jpg`
+- [x] Grep seed tree: no host-vendor names; MCP platform named only in README honesty bullet (product deep links use sagalore.app)
 
 ## Release workflow (tighten when public)
 
-- [ ] Prefer tag `v*` or explicit dispatch over “every push to main ships”
+- [x] Prefer tag `v*` or explicit dispatch over “every push to main ships”
 - [ ] Ensure the workflow creates/pushes the annotated tag that `next-version.sh` expects
 - [ ] Keep artifact contract documented in README (companion auto-update depends on exact names)
-- [ ] `contents: write` only on the release job; PR job read-only
+- [x] `contents: write` only on the release job; PR job read-only
 - [ ] Dependabot for Go modules (optional, lightweight)
 
 ## Addon catalog automation (later)
