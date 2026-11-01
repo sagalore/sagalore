@@ -20,8 +20,8 @@ Use this when moving from the private archive to the public `sagalore/sagalore` 
 - [x] Seed with a **clean initial commit** (or short curated series); keep the old private repo as archive
 - [x] Set Actions variable `SAGALORE_API_URL` on the new repo
 - [x] Apply pending API migrations on the hosted database (especially `016_realtime_sagalore_channel.sql`) before flipping companion builds that `LISTEN` on `sagalore_events`
-- [ ] Branch protection on `main` + required CI (needs GitHub Pro on a private org repo, or make the repo public)
-- [x] Smoke release `v0.1.0` on `sagalore/sagalore`: all OS assets download; `https://api.sagalore.app` baked into companions; addon zip lists `Sagalore/` (full in-game install path not re-tested here)
+- [x] Branch protection on `main` + required CI (`test` check; strict, no force-push/delete)
+- [x] Smoke release on `sagalore/sagalore` (latest `v0.1.1`): companions + `Sagalore-addon.zip` + `SHA256SUMS`; `/releases/latest/download/<asset>` returns 302; website buttons match those names
 - [x] Marketing on separate host ([sagalore/website](https://github.com/sagalore/website)); API hostname separate
 - [x] Confirm Discord OG still uses `https://sagalore.app/assets/og-image.jpg`
 - [x] Grep seed tree: no host-vendor names; MCP platform named only in README honesty bullet (product deep links use sagalore.app)
