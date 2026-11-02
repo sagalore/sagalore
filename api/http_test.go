@@ -716,6 +716,71 @@ func TestAdminQuestCreateWithOptionalImage(t *testing.T) {
 	}
 }
 
+func TestPatchSagaKeepsCoverWithFieldChanges(t *testing.T) {
+	resetDB(t)
+	srv := httptest.NewServer((&Server{store: NewStore(testPool), adminToken: "admin-img"}).Handler())
+	t.Cleanup(srv.Close)
+	playerRec, token := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
+	devGroup(t, playerRec.ID, "tutorial", "Tutorial")
+	author := apiClient{base: srv.URL, token: token, http: srv.Client()}
+
+	var created contract.Quest
+	resp, err := author.do(http.MethodPost, "/v1/sagas", map[string]any{
+		"title": "Uten bilde", "description": "Bare tekst.",
+		"objectives": []map[string]any{
+			{"id": "talk", "type": "interact", "text": "Snakk", "npc": "Tharynn Bouden"},
+		},
+		"party": true,
+	}, &created)
+	if err != nil || resp.StatusCode != http.StatusCreated || created.HasImage {
+		t.Fatalf("create %+v %d %v", created, statusOf(resp), err)
+	}
+
+	pngBytes := tinyPNG(t)
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	_ = mw.WriteField("title", "Med bilde og tekst")
+	_ = mw.WriteField("changes", `["Ny tittel og cover"]`)
+	fw, err := mw.CreateFormFile("image", "cover.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fw.Write(pngBytes); err != nil {
+		t.Fatal(err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPatch, srv.URL+"/v1/sagas/"+created.ID, bytes.NewReader(body.Bytes()))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err = author.http.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	var patched contract.Quest
+	if err := json.Unmarshal(raw, &patched); err != nil {
+		t.Fatalf("patch decode %s: %v", raw, err)
+	}
+	if resp.StatusCode != http.StatusOK || !patched.HasImage || patched.Title != "Med bilde og tekst" || patched.Version != 2 {
+		t.Fatalf("cover dropped on field patch: %+v status %d body %s", patched, resp.StatusCode, raw)
+	}
+
+	req, _ = http.NewRequest(http.MethodGet, srv.URL+"/v1/sagas/"+created.ID+"/image", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err = author.http.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(got) != string(pngBytes) {
+		t.Fatalf("stored cover %d len %d", resp.StatusCode, len(got))
+	}
+}
+
 func TestSeedQuests(t *testing.T) {
 	resetDB(t)
 	store := NewStore(testPool)

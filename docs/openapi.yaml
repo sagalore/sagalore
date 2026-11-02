@@ -230,6 +230,22 @@ paths:
           description: sort is not recognized
         "403":
           description: caller is not a member of the saga's group
+    delete:
+      summary: Author only. Hard-delete an empty draft (active=false, no progress).
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        "204":
+          description: deleted
+        "403":
+          description: caller is not the author
+        "404":
+          description: saga not found
+        "409":
+          description: not_deletable — archive with PATCH active=false instead
   /v1/sync:
     get:
       summary: Sagas, progress, completions, and leaderboards for the caller's groups

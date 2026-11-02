@@ -59,7 +59,9 @@ Session or `gst_`:
 
 `POST /v1/sagas` — any member. Body field `group` is a slug when it is a string. If the player is in exactly one group it may be omitted. Non-members get `403`.
 
-`PATCH /v1/sagas/{id}` — the author. `changes` is required when the text changes. A cover-only upload does not bump the version.
+`PATCH /v1/sagas/{id}` — the author. `changes` is required when the text changes. A cover sent on the same request is stored with the field changes. A cover-only upload does not bump the version.
+
+`DELETE /v1/sagas/{id}` — the author, and only for a draft (`active` is false) that has no progress. Success is `204`. A live saga, or a draft someone has already started, is `409` `not_deletable`: archive it with `PATCH` `{"active":false}` so history stays. Another player gets `403`. Missing sagas are `404`.
 
 `POST /v1/complete` — the character's account must be a member of the saga's group. Optional `started_at` (RFC3339) is the addon clock when the first goal of that saga gained progress. The server stores `duration_sec` = `completed_at` - `started_at` when the start is not after the finish. Both times are addon-reported and are not checked against the game server. A second finish for the same character and saga stays `already_completed`. The table can hold more than one finish row so repeatable sagas can be added later; that behavior is not enabled.
 

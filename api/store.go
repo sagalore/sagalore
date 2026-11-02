@@ -27,7 +27,9 @@ var (
 	ErrNotSagaAuthor = errors.New("not saga author")
 	ErrConflict      = errors.New("conflict")
 	ErrInvalid       = errors.New("invalid")
-	uuidPattern      = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	// ErrSagaNotDeletable: only drafts without progress can be hard-deleted.
+	ErrSagaNotDeletable = errors.New("only draft sagas (active=false) with no participants or progress can be deleted; archive it instead (active=false keeps history)")
+	uuidPattern         = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 )
 
 type Store struct {
@@ -2468,4 +2470,24 @@ func (s *Store) QuestImage(ctx context.Context, questID string) (contentType str
 		return "", nil, ErrNotFound
 	}
 	return contentType, image, nil
+}
+
+// DeleteDraftSagaForPlayer hard-deletes a saga owned by playerID when it is a
+// draft (active=false) with no progress rows. The check and delete run in one
+// statement so a concurrent first completion cannot slip in between.
+func (s *Store) DeleteDraftSagaForPlayer(ctx context.Context, playerID, questID string) error {
+	if err := s.assertQuestOwner(ctx, questID, playerID); err != nil {
+		return err
+	}
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM quests q
+		WHERE q.id=$1 AND q.created_by_player_id=$2 AND q.active=false
+		  AND NOT EXISTS (SELECT 1 FROM progress pr WHERE pr.quest_id=q.id)`, questID, playerID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrSagaNotDeletable
+	}
+	return nil
 }

@@ -143,11 +143,23 @@ func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	// A cover sent together with field changes used to be dropped silently.
+	// Store it before the announcement so a follow-up fetch sees the image.
+	if len(image) > 0 {
+		image, contentType, err = screenshot.NormalizeUpload(image)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+			return
+		}
+		out, err = s.store.SetQuestImage(r.Context(), p.ID, id, contentType, image)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
 	if gerr == nil {
 		actor := displayActor(p.DisplayName, "", p.BattleTag)
 		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor, patch.Changes)
-		_ = image
-		_ = contentType
 	}
 	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
 }
@@ -248,4 +260,20 @@ func readSagaImage(w http.ResponseWriter, r *http.Request) ([]byte, string, erro
 		ct = "application/octet-stream"
 	}
 	return b, ct, nil
+}
+
+// deleteSaga hard-deletes a saga the caller authored, but only while it is a
+// draft (active=false) that nobody has progress on. Anything else must be
+// archived (PATCH active=false) so player history is kept.
+func (s *Server) deleteSaga(w http.ResponseWriter, r *http.Request) {
+	err := s.store.DeleteDraftSagaForPlayer(r.Context(), playerFrom(r).ID, r.PathValue("id"))
+	switch {
+	case errors.Is(err, ErrSagaNotDeletable):
+		writeErr(w, http.StatusConflict, "not_deletable", err.Error())
+		return
+	case err != nil:
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

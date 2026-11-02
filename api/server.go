@@ -71,6 +71,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/sagas", s.withPlayer(s.listSagas))
 	mux.HandleFunc("GET /v1/sagas/{id}", s.withPlayer(s.getSaga))
 	mux.HandleFunc("PATCH /v1/sagas/{id}", s.withMember(s.patchSaga))
+	mux.HandleFunc("DELETE /v1/sagas/{id}", s.withMember(s.deleteSaga))
 	mux.HandleFunc("PUT /v1/sagas/{id}/image", s.withPlayer(s.putSagaImage))
 	mux.HandleFunc("DELETE /v1/sagas/{id}/image", s.withPlayer(s.deleteSagaImage))
 	mux.HandleFunc("GET /v1/sagas/{id}/image", s.withPlayer(s.getSagaImage))
