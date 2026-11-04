@@ -18,6 +18,8 @@ if [[ ! -f "$binary" ]]; then
   exit 1
 fi
 mkdir -p "$out_dir"
+out_dir="$(cd "$out_dir" && pwd)"
+binary="$(cd "$(dirname "$binary")" && pwd)/$(basename "$binary")"
 
 asset_name="$(basename "$binary")"
 zip_path="${out_dir}/${asset_name}.zip"
