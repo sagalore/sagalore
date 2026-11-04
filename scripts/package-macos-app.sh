@@ -28,7 +28,8 @@ workdir="$(mktemp -d)"
 cleanup() { rm -rf "$workdir"; }
 trap cleanup EXIT
 
-app="${workdir}/Sagalore.app"
+stage="${workdir}/stage"
+app="${stage}/Sagalore.app"
 macos="${app}/Contents/MacOS"
 mkdir -p "$macos"
 cp "$binary" "${macos}/Sagalore"
@@ -65,6 +66,22 @@ cat > "${app}/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
+# Go's linker ad-hoc signature does not bind Info.plist; Gatekeeper then says
+# the app is "damaged". Re-sign the whole bundle before archiving.
+codesign --force --deep --sign - "$app"
+codesign --verify --deep --strict "$app"
+
+# One-click helper if the download is still quarantined after unzip.
+cat > "${stage}/Open Sagalore.command" <<'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+xattr -cr "Sagalore.app" >/dev/null 2>&1 || true
+open "Sagalore.app"
+EOF
+chmod +x "${stage}/Open Sagalore.command"
+
+# ditto --norsrc keeps the codesign seal intact through a normal unzip
+# (plain zip / AppleDouble resource forks break sealed resources).
 rm -f "$zip_path"
-(cd "$workdir" && zip -qry "$zip_path" Sagalore.app)
+(cd "$stage" && ditto -c -k --norsrc . "$zip_path")
 echo "wrote $zip_path"
