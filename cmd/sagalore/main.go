@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -289,8 +290,16 @@ func run(opts options) int {
 		refreshTray(m)
 		refreshUpdate(m, application, log)
 		application.OnAccountChange = func() { refreshTray(m) }
+		_ = notify.Show("Sagalore", trayReadyMessage())
 	})
 	return 0
+}
+
+func trayReadyMessage() string {
+	if runtime.GOOS == "darwin" {
+		return "Running in the menu bar. Click the Sagalore icon to sync or quit."
+	}
+	return "Running in the system tray. Click the Sagalore icon near the clock to sync or quit."
 }
 
 func refreshUpdate(m *tray.Menu, application *app.App, log *slog.Logger) {

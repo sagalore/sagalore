@@ -23,6 +23,12 @@ binary="$(cd "$(dirname "$binary")" && pwd)/$(basename "$binary")"
 
 asset_name="$(basename "$binary")"
 zip_path="${out_dir}/${asset_name}.zip"
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+icns="${repo_root}/assets/AppIcon.icns"
+if [[ ! -f "$icns" ]]; then
+  echo "missing $icns — run scripts/generate-app-icons.sh" >&2
+  exit 1
+fi
 
 workdir="$(mktemp -d)"
 cleanup() { rm -rf "$workdir"; }
@@ -31,9 +37,11 @@ trap cleanup EXIT
 stage="${workdir}/stage"
 app="${stage}/Sagalore.app"
 macos="${app}/Contents/MacOS"
-mkdir -p "$macos"
+resources="${app}/Contents/Resources"
+mkdir -p "$macos" "$resources"
 cp "$binary" "${macos}/Sagalore"
 chmod +x "${macos}/Sagalore"
+cp "$icns" "${resources}/AppIcon.icns"
 
 cat > "${app}/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -44,6 +52,8 @@ cat > "${app}/Contents/Info.plist" <<EOF
 	<string>en</string>
 	<key>CFBundleExecutable</key>
 	<string>Sagalore</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>app.sagalore.companion</string>
 	<key>CFBundleInfoDictionaryVersion</key>
