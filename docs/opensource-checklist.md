@@ -7,7 +7,7 @@ Use this when moving from the private archive to the public `sagalore/sagalore` 
 - [x] Go module `github.com/sagalore/sagalore`
 - [x] `DefaultUpdateRepo` = `sagalore/sagalore`
 - [x] `SAGALORE_*` env only (no dual-read fallbacks)
-- [x] Single release asset names (`sagalore-*`, `Sagalore-addon.zip`)
+- [x] Single release asset names (`sagalore-*`, `sagalore-darwin-*.zip` with `Sagalore.app`, `Sagalore-addon.zip`)
 - [x] English CI release download notes
 - [x] Honest README (Cursor + AI assets, Mac-first matrix, unsigned, honor-based times)
 - [x] `docs/architecture.md`
@@ -21,7 +21,7 @@ Use this when moving from the private archive to the public `sagalore/sagalore` 
 - [x] Set Actions variable `SAGALORE_API_URL` on the new repo
 - [x] Apply pending API migrations on the hosted database (especially `016_realtime_sagalore_channel.sql`) before flipping companion builds that `LISTEN` on `sagalore_events`
 - [x] Branch protection on `main` + required CI (`test` check; strict, no force-push/delete)
-- [x] Smoke release on `sagalore/sagalore` (latest `v0.1.1`): companions + `Sagalore-addon.zip` + `SHA256SUMS`; `/releases/latest/download/<asset>` returns 302; website buttons match those names
+- [x] Smoke release on `sagalore/sagalore` (latest `v0.1.1`): companions + Mac `.zip` (`Sagalore.app`) + bare darwin binaries for auto-update + `Sagalore-addon.zip` + `SHA256SUMS`; `/releases/latest/download/<asset>` returns 302; website buttons match Mac zip / Windows exe names
 - [x] Marketing on separate host ([sagalore/website](https://github.com/sagalore/website)); API hostname separate
 - [x] Confirm Discord OG still uses `https://sagalore.app/assets/og-image.jpg`
 - [x] Grep seed tree: no host-vendor names; MCP platform named only in README honesty bullet (product deep links use sagalore.app)

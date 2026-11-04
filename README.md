@@ -98,4 +98,4 @@ Other services can register as OAuth clients and send the player through Battle.
 
 ## Updates
 
-Release assets are `sagalore-darwin-arm64`, `sagalore-darwin-amd64`, `sagalore-windows-amd64.exe`, and `Sagalore-addon.zip`. The default update repo is `sagalore/sagalore`. Self-hosters set `update.repo` or turn updates off. Binaries are not signed.
+Release assets are `sagalore-darwin-arm64.zip` / `sagalore-darwin-amd64.zip` (macOS: unzip and open `Sagalore.app`), bare `sagalore-darwin-arm64` / `sagalore-darwin-amd64` (auto-update), `sagalore-windows-amd64.exe`, and `Sagalore-addon.zip`. The default update repo is `sagalore/sagalore`. Self-hosters set `update.repo` or turn updates off. Binaries are not signed.

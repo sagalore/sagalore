@@ -112,10 +112,15 @@ jobs:
           fi
           mkdir -p dist
           go build -trimpath -ldflags "-s -w -X github.com/sagalore/sagalore/internal/version.Version=${VERSION} -X github.com/sagalore/sagalore/internal/version.DefaultAPIBaseURL=${SAGALORE_API_URL}" -o "dist/${{ matrix.asset }}" ./cmd/sagalore
+      - name: Package macOS app zip
+        if: matrix.goos == 'darwin'
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: bash scripts/package-macos-app.sh "dist/${{ matrix.asset }}" "$VERSION" dist
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
-          path: dist/${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}*
           if-no-files-found: error
 
   release:
@@ -157,12 +162,13 @@ jobs:
             echo ""
             echo "## Downloads"
             echo ""
-            echo "- \`sagalore-darwin-arm64\` and \`sagalore-darwin-amd64\` (macOS)"
+            echo "- \`sagalore-darwin-arm64.zip\` / \`sagalore-darwin-amd64.zip\` (macOS: unzip, open Sagalore.app)"
+            echo "- \`sagalore-darwin-arm64\` / \`sagalore-darwin-amd64\` (bare binaries for auto-update)"
             echo "- \`sagalore-windows-amd64.exe\`"
             echo "- \`Sagalore-addon.zip\`"
             echo "- \`SHA256SUMS\`"
             echo ""
-            echo "The binaries are not signed."
+            echo "The binaries are not signed. On first Mac launch, right-click Sagalore.app → Open."
           } >> notes.md
           gh release create "v${VERSION}" dist/* \
             --target "${GITHUB_SHA}" \
