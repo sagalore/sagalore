@@ -560,8 +560,8 @@ local function currentEntries()
     for _, entry in ipairs(SagaloreData.entries) do
         if type(entry) == "table" then
             -- "*" is a provisional sync row before the companion has upserted this character.
-            local forMe = same(entry.character, player.name) or entry.character == "*"
-            if forMe then
+            local aimedAtMe = same(entry.character, player.name) or entry.character == "*"
+            if aimedAtMe then
                 local realm = entry.realm
                 if type(realm) ~= "string" or realm == "" or player.realm == "" or CF.sameRealm(realm, player.realm) or entry.character == "*" then
                     local visible = true
@@ -852,8 +852,8 @@ local function formatOsloWhen(raw)
         return ""
     end
     sec = math.floor(sec)
-    local localSec = sec + osloOffset(sec)
-    local t = date("!*t", localSec)
+    local secLocal = sec + osloOffset(sec)
+    local t = date("!*t", secLocal)
     if not t then
         return ""
     end
@@ -974,17 +974,17 @@ local function activityList(entry)
     -- Local finishes before the companion has synced them to the API.
     if type(entry) == "table" and type(entry.saga_id) == "string" then
         initDB()
-        local localDone = SagaloreDB.completions and SagaloreDB.completions[entry.saga_id]
-        if type(localDone) == "table" then
+        local doneLocal = SagaloreDB.completions and SagaloreDB.completions[entry.saga_id]
+        if type(doneLocal) == "table" then
             add({
-                character = localDone.character or player.name,
-                realm = localDone.realm or player.realm,
+                character = doneLocal.character or player.name,
+                realm = doneLocal.realm or player.realm,
                 battletag = player.battletag,
-                level = localDone.level or player.level,
-                race = localDone.race or player.race,
-                class = localDone.class or player.class,
-                completed_at = localDone.completed_at,
-                started_at = localDone.started_at,
+                level = doneLocal.level or player.level,
+                race = doneLocal.race or player.race,
+                class = doneLocal.class or player.class,
+                completed_at = doneLocal.completed_at,
+                started_at = doneLocal.started_at,
             })
         end
     end
@@ -1890,7 +1890,7 @@ local function objectiveLines(entry)
     return lines
 end
 
-local function inInstance()
+local function insideInstance()
     if not IsInInstance then
         return false
     end
@@ -1902,28 +1902,28 @@ local function inInstance()
 end
 
 local function broadcast(message)
-    if inInstance() then
+    if insideInstance() then
         return
     end
     if not ((C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage) then
         return
     end
-    local inRaid, inGroup, inGuild = false, false, false
+    local raidNow, partyNow, guildNow = false, false, false
     pcall(function()
-        inRaid = IsInRaid() and true or false
+        raidNow = IsInRaid() and true or false
     end)
     pcall(function()
-        inGroup = IsInGroup() and true or false
+        partyNow = IsInGroup() and true or false
     end)
     pcall(function()
-        inGuild = IsInGuild() and true or false
+        guildNow = IsInGuild() and true or false
     end)
-    if inRaid then
+    if raidNow then
         sendAddon(PREFIX, message, "RAID")
-    elseif inGroup then
+    elseif partyNow then
         sendAddon(PREFIX, message, "PARTY")
     end
-    if inGuild then
+    if guildNow then
         sendAddon(PREFIX, message, "GUILD")
     end
 end
