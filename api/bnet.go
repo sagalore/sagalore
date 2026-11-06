@@ -22,6 +22,7 @@ const (
 	bnetUserInfoURL   = "https://oauth.battle.net/userinfo"
 	bnetKindCompanion = "companion"
 	bnetKindOAuth     = "oauth"
+	bnetKindJoin      = "join"
 )
 
 type sessionWire struct {
@@ -175,6 +176,36 @@ func (s *Server) beginBnetLogin(ctx context.Context, requestID string) (string, 
 	return s.battleNetAuthorizeURL(state, challenge), nil
 }
 
+// beginBnetJoinLogin stores a join-link Battle.net attempt. The join token is
+// kept in oauth_request_id so the callback can redirect back to /join/{token}.
+func (s *Server) beginBnetJoinLogin(ctx context.Context, joinToken string) (string, error) {
+	if !s.bnetConfigured() {
+		return "", errBnetNotConfigured
+	}
+	joinToken = strings.TrimSpace(joinToken)
+	if !strings.HasPrefix(joinToken, joinTokenPref) || len(joinToken) > 120 {
+		return "", fmt.Errorf("%w: token", ErrInvalid)
+	}
+	id, err := randomToken(16)
+	if err != nil {
+		return "", err
+	}
+	verifier, challenge, err := pkcePair()
+	if err != nil {
+		return "", err
+	}
+	state, err := randomToken(16)
+	if err != nil {
+		return "", err
+	}
+	if err := s.store.UpsertBnetAttempt(ctx, bnetAttemptRecord{
+		Kind: bnetKindJoin, ID: id, Verifier: verifier, State: state, OAuthRequestID: joinToken,
+	}); err != nil {
+		return "", err
+	}
+	return s.battleNetAuthorizeURL(state, challenge), nil
+}
+
 func (s *Server) bnetRedirect() string {
 	return strings.TrimRight(s.publicBaseURL, "/") + "/v1/auth/bnet/callback"
 }
@@ -211,6 +242,17 @@ func (s *Server) bnetCallback(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.DeleteBnetAttempt(r.Context(), row.Kind, row.ID)
 		http.SetCookie(w, oauthSessionCookie(s.publicBaseURL, raw, r))
 		http.Redirect(w, r, "/oauth/authorize?request="+url.QueryEscape(row.OAuthRequestID), http.StatusFound)
+		return
+	}
+	if row.Kind == bnetKindJoin {
+		raw, err := s.store.IssueConsentSession(r.Context(), player.ID)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		_ = s.store.DeleteBnetAttempt(r.Context(), row.Kind, row.ID)
+		http.SetCookie(w, joinSessionCookie(s.publicBaseURL, raw, r))
+		http.Redirect(w, r, "/join/"+url.PathEscape(row.OAuthRequestID), http.StatusFound)
 		return
 	}
 	sess, err := s.store.IssueSessionFor(r.Context(), player.ID)

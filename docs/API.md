@@ -47,11 +47,30 @@ Session or `gst_`:
 | `GET` | `/v1/me/invites` | Pending invites addressed to the caller (character or BattleTag). This does not create include-invites. `GET /v1/sync` still does, for alts that are not participating. |
 | `POST` | `/v1/invites/{id}/accept` | Join the account. Marks that character participating. |
 | `POST` | `/v1/invites/{id}/decline` | Permanent for that invite. |
+| `POST` | `/v1/groups/{id}/join-links` | Owner. Body `{mode?, expires_in_sec?, max_uses?}`. `mode` is `open` or `gated` (default `gated`). Default TTL is 7 days (min 1 hour, max 90 days). Response includes `token` and `url` once. Personal groups are forbidden. |
+| `GET` | `/v1/groups/{id}/join-links` | Owner. Metadata only (no raw token). |
+| `DELETE` | `/v1/groups/{id}/join-links/{linkId}` | Owner revokes a link. |
+| `GET` | `/v1/groups/{id}/join-requests?status=pending` | Owner. Gated redeem requests. |
+| `POST` | `/v1/groups/{id}/join-requests/{requestId}/approve` | Owner. Adds the requester and marks their selected characters participating. |
+| `POST` | `/v1/groups/{id}/join-requests/{requestId}/reject` | Owner. |
+| `GET` | `/v1/join/{token}` | Public link info. With a Bearer token, also returns the caller's synced `characters`. |
+| `POST` | `/v1/join/{token}` | Redeem. Body `{character_ids:[…]}`. `open` joins immediately; `gated` creates a pending request. Characters must already belong to the caller (companion sync). |
+| `GET` | `/join/{token}` | Thin browser UI (OAuth chrome). Battle.net sign-in, then checkboxes for synced characters. Empty roster tells the player to run the companion first. |
 | `POST` | `/v1/groups/{id}/leave` | Leave. If the owner leaves, the oldest remaining member becomes owner. |
 | `DELETE` | `/v1/groups/{id}/members/{playerID}` | Owner removes a member. |
 | `PUT` | `/v1/groups/{id}/webhook` | Owner. `{"url":"..."}` (empty clears). JSON event POSTs — see [webhooks.md](webhooks.md). |
 | `PUT` | `/v1/groups/{id}/locale` | Owner. `en` or `nb`. |
+| `GET` | `/v1/me/characters` | Characters synced to the signed-in account. |
 | `PATCH` | `/v1/characters/{id}` | `{"participating":true}`. |
+
+### Join links
+
+Shareable alternative to naming a character. Targeted invites (`POST …/invites`) and the in-game Accept dialog stay as they are.
+
+- **open** — after Battle.net auth and character selection, the account joins and only the checked characters get `participating=true`.
+- **gated** — same selection creates a join request; the owner must approve.
+- Characters come from companion sync, not Blizzard’s profile API. If the roster is empty, run the companion once, then reload `/join/…`.
+- Marketing / Discord can deep-link to `{PUBLIC_BASE_URL}/join/{token}`. MCP wrappers and website polish live outside this repo.
 
 ## Sagas
 
