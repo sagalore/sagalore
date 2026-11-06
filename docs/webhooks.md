@@ -25,6 +25,10 @@ On bootstrap, `SAGALORE_BOOTSTRAP_WEBHOOK_URL` is copied once onto the bootstrap
 | `saga.retired` | A saga is set inactive |
 | `saga.completed` | A character finishes a saga for the first time |
 | `invite.accepted` | Someone accepts a group invite |
+| `join.joined` | Someone redeems an **open** join link |
+| `join.requested` | Someone submits a **gated** join request |
+| `join.approved` | An owner approves a gated join request |
+| `join.rejected` | An owner rejects a gated join request |
 
 Delivery is asynchronous. Completions set `webhook_posted` on the progress row after a successful POST.
 
@@ -54,6 +58,6 @@ Delivery is asynchronous. Completions set `webhook_posted` on the progress row a
 }
 ```
 
-Fields other than `type`, `occurred_at`, and `group` are omitted when unused. `invite.accepted` includes `invite` (`{ "id": "…" }`) instead of `saga`. `changes` appears on updates when the author sent a change list.
+Fields other than `type`, `occurred_at`, and `group` are omitted when unused. `invite.accepted` includes `invite` (`{ "id": "…" }`) instead of `saga`. Join-link events include `join` (`id`, `link_id`, `mode`, `status`) and `characters` (selected roster); a single selected character is also mirrored on `character`. `changes` appears on updates when the author sent a change list.
 
 The request uses `Content-Type: application/json` and `User-Agent: Sagalore-Webhook/1`. A non-2xx response is logged; there is no automatic retry beyond the delivery attempt.

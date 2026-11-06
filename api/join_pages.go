@@ -392,6 +392,9 @@ func (s *Server) joinPagePost(w http.ResponseWriter, r *http.Request) {
 	}
 	ids := r.Form["character_id"]
 	out, err := s.store.RedeemJoinLink(r.Context(), player.ID, token, ids)
+	if err == nil {
+		s.announceJoin(r.Context(), out.Mode, out, player.BattleTag)
+	}
 	if err != nil {
 		info, _ := s.store.JoinLinkInfo(r.Context(), token, player.ID)
 		view := joinPageView{

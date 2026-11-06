@@ -115,6 +115,83 @@ func (s *Server) announceInviteAccepted(ctx context.Context, inv contract.Invite
 	})
 }
 
+// announceJoin posts join.* for shareable join links. mode is open|gated.
+func (s *Server) announceJoin(ctx context.Context, mode string, req contract.JoinRequest, actorBattleTag string) {
+	if s.webhooks == nil || req.GroupID == "" {
+		return
+	}
+	mode = strings.TrimSpace(strings.ToLower(mode))
+	var typ string
+	switch {
+	case mode == "open" && req.Status == "approved":
+		typ = webhook.TypeJoinJoined
+	case req.Status == "pending":
+		typ = webhook.TypeJoinRequested
+	case req.Status == "approved":
+		typ = webhook.TypeJoinApproved
+	case req.Status == "rejected":
+		typ = webhook.TypeJoinRejected
+	default:
+		return
+	}
+	url, group, ok := s.groupWebhook(ctx, req.GroupID)
+	if !ok {
+		return
+	}
+	if group.Name == "" {
+		group.Name = req.GroupName
+	}
+	tag := strings.TrimSpace(actorBattleTag)
+	if tag == "" {
+		tag = strings.TrimSpace(req.BattleTag)
+	}
+	chars := s.charRefs(ctx, req.CharacterIDs)
+	ref := req.ID
+	if ref == "" {
+		ref = req.LinkID
+	}
+	ev := webhook.Event{
+		Type:       typ,
+		OccurredAt: time.Now().UTC(),
+		Group:      group,
+		Join: &webhook.JoinRef{
+			ID:     req.ID,
+			LinkID: req.LinkID,
+			Mode:   mode,
+			Status: req.Status,
+		},
+		Actor:      actorRef(tag, displayActor(req.DisplayName, "", tag)),
+		Characters: chars,
+	}
+	if len(chars) == 1 {
+		c := chars[0]
+		ev.Character = &c
+	}
+	s.webhooks.Enqueue(url, ref, ev)
+}
+
+func (s *Server) charRefs(ctx context.Context, ids []string) []webhook.CharRef {
+	if s == nil || s.store == nil || len(ids) == 0 {
+		return nil
+	}
+	out := make([]webhook.CharRef, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		var c webhook.CharRef
+		err := s.store.pool.QueryRow(ctx, `
+			SELECT name, realm, race, class, level FROM characters WHERE id=$1`, id).Scan(
+			&c.Name, &c.Realm, &c.Race, &c.Class, &c.Level)
+		if err != nil {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
 func sagaRef(q contract.Quest) *webhook.SagaRef {
 	return &webhook.SagaRef{
 		ID:          q.ID,
