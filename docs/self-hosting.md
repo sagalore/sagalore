@@ -37,6 +37,7 @@ Listens on port 8080. Good for local development and a single host. Migrations r
 | `SAGALORE_BOOTSTRAP_WEBHOOK_URL` | no | Copied once onto the bootstrap group when its webhook is empty. After that the group row is the source of truth. New groups stay quiet until the owner sets a webhook (`PUT /v1/groups/{id}/webhook`). See [webhooks.md](webhooks.md). |
 | `SAGALORE_DEV_TOKEN` | dev and CI only | Login bypass. It is not a stand-in for Battle.net. |
 | `SAGALORE_CREATE_URL` | no | Optional override for the companion “Create sagas…” link (default is the official site). |
+| `SAGALORE_SITE_URL` | no | Landing / install link on join pages (default `https://sagalore.app`). |
 
 Each host registers its own Battle.net application and redirect URI. WoW Forever characters are not in Blizzard's profile API. The addon reports characters. Login does not wait for profile verification.
 

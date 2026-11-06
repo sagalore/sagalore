@@ -212,6 +212,45 @@ type Invite struct {
 	InvitedAt string `json:"invited_at,omitempty"`
 }
 
+// JoinLink is a shareable group invite URL. Token and URL are set only when minted.
+type JoinLink struct {
+	ID        string `json:"id"`
+	GroupID   string `json:"group_id"`
+	GroupName string `json:"group_name,omitempty"`
+	Mode      string `json:"mode"`
+	ExpiresAt string `json:"expires_at"`
+	MaxUses   *int   `json:"max_uses,omitempty"`
+	UseCount  int    `json:"use_count"`
+	RevokedAt string `json:"revoked_at,omitempty"`
+	CreatedAt string `json:"created_at"`
+	Token     string `json:"token,omitempty"`
+	URL       string `json:"url,omitempty"`
+}
+
+// JoinRequest is a gated join-link redeem waiting for the group owner.
+type JoinRequest struct {
+	ID           string   `json:"id"`
+	LinkID       string   `json:"link_id"`
+	GroupID      string   `json:"group_id"`
+	GroupName    string   `json:"group_name,omitempty"`
+	PlayerID     string   `json:"player_id"`
+	BattleTag    string   `json:"battletag,omitempty"`
+	DisplayName  string   `json:"display_name,omitempty"`
+	Status       string   `json:"status"`
+	CharacterIDs []string `json:"character_ids"`
+	CreatedAt    string   `json:"created_at"`
+}
+
+// JoinLinkInfo is the public redeem view for a join token.
+type JoinLinkInfo struct {
+	GroupID     string      `json:"group_id"`
+	GroupName   string      `json:"group_name"`
+	Mode        string      `json:"mode"`
+	ExpiresAt   string      `json:"expires_at"`
+	Characters  []Character `json:"characters,omitempty"`
+	AlreadyMember bool      `json:"already_member,omitempty"`
+}
+
 // PersonalToken is a long-lived gst_ credential. Token is set only when it is minted.
 type PersonalToken struct {
 	ID        string `json:"id"`

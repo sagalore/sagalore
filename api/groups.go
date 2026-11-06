@@ -436,12 +436,8 @@ func (s *Store) answerInvite(ctx context.Context, playerID, inviteID, status str
 				VALUES ($1,$2,$3,true) RETURNING id::text`, playerID, inv.Name, inv.Realm).Scan(&charID); err != nil {
 				return contract.Invite{}, mapPG(err)
 			}
-		} else if _, err := tx.Exec(ctx, `UPDATE characters SET participating=true, updated_at=now() WHERE id=$1`, charID.String); err != nil {
-			return contract.Invite{}, err
 		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO group_members (group_id, player_id, role) VALUES ($1,$2,'member')
-			ON CONFLICT (group_id, player_id) DO NOTHING`, inv.GroupID, playerID); err != nil {
+		if err := ensureMemberAndParticipate(ctx, tx, playerID, inv.GroupID, []string{charID.String}); err != nil {
 			return contract.Invite{}, err
 		}
 	}
