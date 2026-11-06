@@ -5248,7 +5248,6 @@ function CF.foreverPollKills()
     CF.foreverCheckUnitDead("target")
     CF.foreverCheckUnitDead("mouseover")
     CF.foreverCheckUnitDead("focus")
-    local i
     for i = 1, 40 do
         CF.foreverCheckUnitDead("nameplate" .. i)
     end
