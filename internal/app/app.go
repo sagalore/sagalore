@@ -36,13 +36,13 @@ type App struct {
 	Log        *slog.Logger
 	Client     *backend.Client
 	Queue      *queue.Queue
-	WowDir     string
+	Flavors    []wowpath.Flavor // every install that gets the addon and sync
 	NoUpdate   bool
 	UpdateDir  string // tests; empty uses the config directory
 	Prompt     func() (string, error)
 	sync       contract.SyncResponse
 	player     contract.Player
-	follow     follower
+	follows    []follower // chat logs, same order as Flavors
 	mu         sync.Mutex
 	loginMu    sync.Mutex
 	loginTried bool
@@ -215,28 +215,13 @@ func (a *App) SyncNow(ctx context.Context) error {
 }
 
 func (a *App) bootstrap(ctx context.Context) error {
-	if a.WowDir == "" {
-		dir, err := wowpath.DetectClient(a.Config.WowPath, wowpath.Candidates(), a.Config.Client)
-		if err != nil {
-			a.Log.Warn(err.Error())
-		} else {
-			a.WowDir = dir
-			a.follow.path = wowpath.ChatLog(dir)
-			a.Log.Info("fant WoW", "path", dir)
-			if a.Config.WowPath == "" {
-				a.Config.WowPath = dir
-				if err := config.Save(a.Config); err != nil {
-					a.Log.Warn("kunne ikke lagre wow_path", "err", err)
-				}
-			}
+	a.ensureFlavors()
+	for _, f := range a.Flavors {
+		if err := install.Install(f.Path, f.Client); err != nil {
+			a.Log.Error("addon install failed", "path", f.Path, "client", f.Client, "err", err)
 		}
-	}
-	if a.WowDir != "" {
-		if err := install.Install(a.WowDir, a.Config.Client); err != nil {
-			a.Log.Error("addon install failed", "err", err)
-		}
-		if err := install.WriteLanguage(a.WowDir, "en"); err != nil {
-			a.Log.Warn("could not write addon language", "err", err)
+		if err := install.WriteLanguage(f.Path, "en"); err != nil {
+			a.Log.Warn("could not write addon language", "path", f.Path, "err", err)
 		}
 	}
 	if a.Client.APIKey == "" {
@@ -285,7 +270,7 @@ func (a *App) pullSync(ctx context.Context) error {
 	if addonNote != "" {
 		notice, noticeID = addonNote, sync.GeneratedAt
 	}
-	if a.WowDir == "" {
+	if len(a.Flavors) == 0 {
 		a.mu.Lock()
 		a.applySyncIdentityLocked(sync)
 		a.notice, a.noticeID = notice, noticeID
@@ -298,8 +283,7 @@ func (a *App) pullSync(ctx context.Context) error {
 		return nil
 	}
 	entries := syncdata.Merge(sync)
-	addonDir := wowpath.AddonDir(a.WowDir)
-	aspects, err := a.writeSagaImages(ctx, sync, addonDir)
+	aspects, images, err := a.fetchSagaImages(ctx, sync)
 	if err != nil {
 		a.Log.Warn("kunne ikke hente saga-bilder", "err", err)
 	}
@@ -309,12 +293,11 @@ func (a *App) pullSync(ctx context.Context) error {
 		}
 	}
 	body := syncdata.WriteSyncLua(sync.BattleTag, sync.GeneratedAt, entries, notice, noticeID, sync.Groups, sync.Invites, sync.Characters, sync.Leaderboards)
-	path := filepath.Join(addonDir, "SagaloreData.lua")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		return err
+	for _, f := range a.Flavors {
+		addonDir := wowpath.AddonDir(f.Path)
+		if err := writeSyncPayload(addonDir, body, images); err != nil {
+			return err
+		}
 	}
 	a.mu.Lock()
 	a.applySyncIdentityLocked(sync)
@@ -322,9 +305,43 @@ func (a *App) pullSync(ctx context.Context) error {
 	cfg := a.Config
 	a.mu.Unlock()
 	_ = config.Save(cfg)
-	a.Log.Info("oppdrag oppdatert. Skriv /reload i spillet hvis du er innlogget.", "antall", len(entries))
+	a.Log.Info("oppdrag oppdatert. Skriv /reload i spillet hvis du er innlogget.", "antall", len(entries), "flavors", len(a.Flavors))
 	a.announce(desktop)
 	a.notifyAccount()
+	return nil
+}
+
+func writeSyncPayload(addonDir, body string, images map[string][]byte) error {
+	path := filepath.Join(addonDir, "SagaloreData.lua")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		return err
+	}
+	media := filepath.Join(addonDir, "media")
+	if err := os.MkdirAll(media, 0o755); err != nil {
+		return err
+	}
+	keep := map[string]bool{}
+	for name, raw := range images {
+		if err := os.WriteFile(filepath.Join(media, name), raw, 0o644); err != nil {
+			return err
+		}
+		keep[name] = true
+	}
+	entries, err := os.ReadDir(media)
+	if err != nil {
+		return nil
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if !keep[e.Name()] {
+			_ = os.Remove(filepath.Join(media, e.Name()))
+		}
+	}
 	return nil
 }
 
@@ -339,13 +356,9 @@ func (a *App) announce(desktop string) {
 	}
 }
 
-func (a *App) writeSagaImages(ctx context.Context, sync contract.SyncResponse, addonDir string) (map[string]float64, error) {
-	media := filepath.Join(addonDir, "media")
-	if err := os.MkdirAll(media, 0o755); err != nil {
-		return nil, err
-	}
-	keep := map[string]bool{}
-	aspects := map[string]float64{}
+func (a *App) fetchSagaImages(ctx context.Context, sync contract.SyncResponse) (aspects map[string]float64, images map[string][]byte, err error) {
+	aspects = map[string]float64{}
+	images = map[string][]byte{}
 	for _, q := range sync.Quests {
 		if !q.HasImage {
 			continue
@@ -361,27 +374,46 @@ func (a *App) writeSagaImages(ctx context.Context, sync contract.SyncResponse, a
 			continue
 		}
 		name := q.ID + ".tga"
-		if err := os.WriteFile(filepath.Join(media, name), tga, 0o644); err != nil {
-			return aspects, err
-		}
-		keep[name] = true
+		images[name] = tga
 		if h > 0 {
 			aspects[q.ID] = float64(w) / float64(h)
 		}
 	}
-	entries, err := os.ReadDir(media)
+	return aspects, images, nil
+}
+
+// ensureFlavors discovers every installed WoW flavor once per process.
+func (a *App) ensureFlavors() {
+	if len(a.Flavors) > 0 {
+		if len(a.follows) != len(a.Flavors) {
+			a.follows = make([]follower, len(a.Flavors))
+			for i, f := range a.Flavors {
+				a.follows[i].path = wowpath.ChatLog(f.Path)
+			}
+		}
+		return
+	}
+	list, err := wowpath.DetectAll(a.Config.WowPath, wowpath.Candidates())
 	if err != nil {
-		return aspects, nil
+		a.Log.Warn(err.Error())
+		return
 	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if !keep[e.Name()] {
-			_ = os.Remove(filepath.Join(media, e.Name()))
+	a.Flavors = list
+	a.follows = make([]follower, len(list))
+	for i, f := range list {
+		a.follows[i].path = wowpath.ChatLog(f.Path)
+		a.Log.Info("fant WoW", "path", f.Path, "client", f.Client)
+	}
+	root := wowpath.InstallRoot(a.Config.WowPath)
+	if a.Config.WowPath == "" && len(list) > 0 {
+		root = wowpath.InstallRoot(list[0].Path)
+	}
+	if root != "" && root != a.Config.WowPath {
+		a.Config.WowPath = root
+		if err := config.Save(a.Config); err != nil {
+			a.Log.Warn("kunne ikke lagre wow_path", "err", err)
 		}
 	}
-	return aspects, nil
 }
 
 // HandleLine enqueues a parsed chat line. Duplicate events return false.
@@ -424,15 +456,17 @@ func (a *App) HandleLine(line string) bool {
 }
 
 func (a *App) pollChat() {
-	if a.follow.path == "" && a.WowDir != "" {
-		a.follow.path = wowpath.ChatLog(a.WowDir)
+	if len(a.follows) == 0 && len(a.Flavors) > 0 {
+		a.follows = make([]follower, len(a.Flavors))
+		for i, f := range a.Flavors {
+			a.follows[i].path = wowpath.ChatLog(f.Path)
+		}
 	}
-	if a.follow.path == "" {
-		return
-	}
-	for _, line := range a.follow.poll() {
-		if a.HandleLine(line) {
-			a.Log.Info("lest fra chatloggen", "line", trim(line))
+	for i := range a.follows {
+		for _, line := range a.follows[i].poll() {
+			if a.HandleLine(line) {
+				a.Log.Info("lest fra chatloggen", "line", trim(line))
+			}
 		}
 	}
 }
@@ -440,45 +474,47 @@ func (a *App) pollChat() {
 // pollSavedVars enqueues completions the addon wrote locally. On Classic Era,
 // AddMessage lines never reach WoWChatLog.txt, so this is the reliable path.
 // It also applies /sagalore and /sl reset requests, invite answers, and the
-// pending character snapshot from SavedVariables.
+// pending character snapshot from SavedVariables. Every installed flavor is polled.
 func (a *App) pollSavedVars() {
-	if a.WowDir == "" {
+	if len(a.Flavors) == 0 {
 		return
 	}
 	a.pollPendingResets()
-	a.pollPendingInvites()
-	a.pollPendingCharacter()
-	list, err := savedvars.ReadCompletions(a.WowDir)
-	if err != nil {
-		return
-	}
-	for _, c := range list {
-		if _, ok := syncdata.QuestByID(a.sync, c.QuestID); !ok {
+	for _, f := range a.Flavors {
+		a.pollPendingInvitesDir(f.Path)
+		a.pollPendingCharacterDir(f.Path)
+		list, err := savedvars.ReadCompletions(f.Path)
+		if err != nil {
 			continue
 		}
-		key := queue.CompletionKey(c.QuestID, c.Character, c.Realm)
-		if !a.serverHasCompletion(c.QuestID, c.Character, c.Realm) {
-			a.Queue.ForgetDone(key)
-		}
-		item := queue.Item{
-			Kind: "completion", Key: key,
-			QuestID: c.QuestID, QuestVersion: c.QuestVersion, Character: c.Character, Realm: c.Realm,
-			Race: c.Race, Class: c.Class, Level: c.Level, CompletedAt: c.At.UTC().Format(time.RFC3339),
-			Instance: c.Instance, GroupMembers: c.GroupMembers,
-		}
-		if !c.Started.IsZero() {
-			item.StartedAt = c.Started.UTC().Format(time.RFC3339)
-		}
-		ok := a.Queue.Enqueue(item)
-		if !ok && item.StartedAt != "" {
-			a.Queue.SetStartedAt(key, item.StartedAt)
-		}
-		if !ok && len(c.GroupMembers) > 0 && !a.Queue.SetGroup(key, c.Instance, c.GroupMembers) {
-			item.Key = "group\n" + key
-			ok = a.Queue.Enqueue(item)
-		}
-		if ok {
-			a.Log.Info("lest fra SavedVariables", "character", c.Character, "quest", c.QuestID)
+		for _, c := range list {
+			if _, ok := syncdata.QuestByID(a.sync, c.QuestID); !ok {
+				continue
+			}
+			key := queue.CompletionKey(c.QuestID, c.Character, c.Realm)
+			if !a.serverHasCompletion(c.QuestID, c.Character, c.Realm) {
+				a.Queue.ForgetDone(key)
+			}
+			item := queue.Item{
+				Kind: "completion", Key: key,
+				QuestID: c.QuestID, QuestVersion: c.QuestVersion, Character: c.Character, Realm: c.Realm,
+				Race: c.Race, Class: c.Class, Level: c.Level, CompletedAt: c.At.UTC().Format(time.RFC3339),
+				Instance: c.Instance, GroupMembers: c.GroupMembers,
+			}
+			if !c.Started.IsZero() {
+				item.StartedAt = c.Started.UTC().Format(time.RFC3339)
+			}
+			ok := a.Queue.Enqueue(item)
+			if !ok && item.StartedAt != "" {
+				a.Queue.SetStartedAt(key, item.StartedAt)
+			}
+			if !ok && len(c.GroupMembers) > 0 && !a.Queue.SetGroup(key, c.Instance, c.GroupMembers) {
+				item.Key = "group\n" + key
+				ok = a.Queue.Enqueue(item)
+			}
+			if ok {
+				a.Log.Info("lest fra SavedVariables", "character", c.Character, "quest", c.QuestID, "client", f.Client)
+			}
 		}
 	}
 }
@@ -490,35 +526,37 @@ func (a *App) pollPendingResets() {
 	if a.Client == nil || a.Client.APIKey == "" {
 		return
 	}
-	list, err := savedvars.ReadResets(a.WowDir)
-	if err != nil || len(list) == 0 {
-		return
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	changed := false
-	for _, r := range list {
-		key := queue.ResetKey(r.QuestID, r.All, r.At)
-		if a.Queue.IsDone(key) {
+	for _, f := range a.Flavors {
+		list, err := savedvars.ReadResets(f.Path)
+		if err != nil || len(list) == 0 {
 			continue
 		}
-		questID := ""
-		if !r.All {
-			questID = r.QuestID
+		for _, r := range list {
+			key := queue.ResetKey(r.QuestID, r.All, r.At)
+			if a.Queue.IsDone(key) {
+				continue
+			}
+			questID := ""
+			if !r.All {
+				questID = r.QuestID
+			}
+			deleted, err := a.Client.ResetProgress(ctx, questID)
+			if err != nil {
+				a.Log.Warn("kunne ikke tilbakestille progress", "quest", questID, "err", err)
+				continue
+			}
+			if r.All {
+				a.Queue.ForgetDonePrefix("completion\n")
+			} else {
+				a.Queue.ForgetDonePrefix("completion\n" + questID + "\n")
+			}
+			a.Queue.MarkDone(key)
+			changed = true
+			a.Log.Info("tilbakestilte progress", "quest", questID, "all", r.All, "deleted", deleted)
 		}
-		deleted, err := a.Client.ResetProgress(ctx, questID)
-		if err != nil {
-			a.Log.Warn("kunne ikke tilbakestille progress", "quest", questID, "err", err)
-			continue
-		}
-		if r.All {
-			a.Queue.ForgetDonePrefix("completion\n")
-		} else {
-			a.Queue.ForgetDonePrefix("completion\n" + questID + "\n")
-		}
-		a.Queue.MarkDone(key)
-		changed = true
-		a.Log.Info("tilbakestilte progress", "quest", questID, "all", r.All, "deleted", deleted)
 	}
 	if !changed {
 		return
@@ -531,9 +569,8 @@ func (a *App) pollPendingResets() {
 	}
 }
 
-// pollPendingInvites enqueues accept/decline from SagaloreDB.pending_invites.
-func (a *App) pollPendingInvites() {
-	list, err := savedvars.ReadPendingInvites(a.WowDir)
+func (a *App) pollPendingInvitesDir(wowDir string) {
+	list, err := savedvars.ReadPendingInvites(wowDir)
 	if err != nil || len(list) == 0 {
 		return
 	}
@@ -548,9 +585,8 @@ func (a *App) pollPendingInvites() {
 	}
 }
 
-// pollPendingCharacter enqueues CHARACTER upserts from SagaloreDB.pending_character.
-func (a *App) pollPendingCharacter() {
-	list, err := savedvars.ReadPendingCharacters(a.WowDir)
+func (a *App) pollPendingCharacterDir(wowDir string) {
+	list, err := savedvars.ReadPendingCharacters(wowDir)
 	if err != nil || len(list) == 0 {
 		return
 	}
@@ -735,7 +771,7 @@ func (a *App) offerUpdate(ctx context.Context, client *update.Client, repo, curr
 	a.Log.Info("laster ned oppdatering", "versjon", rel.Tag)
 
 	var addonPath string
-	if asset, ok := update.FindAsset(rel, update.AddonZip); ok && a.WowDir != "" {
+	if asset, ok := update.FindAsset(rel, update.AddonZip); ok && len(a.Flavors) > 0 {
 		body, err := client.Download(ctx, asset)
 		if err != nil {
 			a.Log.Warn("kunne ikke laste ned tillegget", "err", err)
@@ -806,7 +842,7 @@ func (a *App) ApplyUpdate() error {
 	a.mu.Lock()
 	bin := a.pendingBinary
 	addon := a.pendingAddon
-	wow := a.WowDir
+	flavors := append([]wowpath.Flavor(nil), a.Flavors...)
 	a.mu.Unlock()
 	if bin == "" {
 		return errors.New("ingen oppdatering")
@@ -815,10 +851,16 @@ func (a *App) ApplyUpdate() error {
 	if err != nil {
 		return err
 	}
-	if addon != "" && wow != "" {
+	if addon != "" && len(flavors) > 0 {
 		if z, err := os.ReadFile(addon); err == nil {
-			if err := installZip(wow, z); err != nil {
-				a.Log.Warn("kunne ikke pakke ut tillegget", "err", err)
+			for _, f := range flavors {
+				if err := installZip(f.Path, z); err != nil {
+					a.Log.Warn("kunne ikke pakke ut tillegget", "path", f.Path, "err", err)
+					continue
+				}
+				if err := install.ApplyClientTOCs(f.Path, f.Client); err != nil {
+					a.Log.Warn("kunne ikke tilpasse TOC", "path", f.Path, "err", err)
+				}
 			}
 		}
 	}

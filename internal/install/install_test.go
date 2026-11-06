@@ -83,6 +83,27 @@ func TestTOCFilesMatchInterfaceList(t *testing.T) {
 	check("Sagalore_TBC.toc", between(text, "TBC=", "\n"))
 }
 
+func TestApplyClientTOCsForever(t *testing.T) {
+	wow := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(wow, "Interface", "AddOns"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(wow, "classic_era"); err != nil {
+		t.Fatal(err)
+	}
+	mainline, _ := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "Sagalore", "Sagalore_Mainline.toc"))
+	if strings.Contains(string(mainline), "Interface: 16001") {
+		t.Fatal("era install should leave mainline alone")
+	}
+	if err := ApplyClientTOCs(wow, "forever"); err != nil {
+		t.Fatal(err)
+	}
+	mainline, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "Sagalore", "Sagalore_Mainline.toc"))
+	if err != nil || !strings.Contains(string(mainline), "Interface: 16001") {
+		t.Fatalf("ApplyClientTOCs forever:\n%s", mainline)
+	}
+}
+
 func TestInstallClassicKeepsFlavorTOCs(t *testing.T) {
 	wow := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(wow, "Interface", "AddOns"), 0o755); err != nil {

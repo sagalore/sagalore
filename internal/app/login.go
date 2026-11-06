@@ -18,6 +18,7 @@ import (
 	"github.com/sagalore/sagalore/internal/envcompat"
 	"github.com/sagalore/sagalore/internal/install"
 	"github.com/sagalore/sagalore/internal/notify"
+	"github.com/sagalore/sagalore/internal/wowpath"
 )
 
 // errLoginTimedOut is returned when the browser flow runs out of time. The
@@ -239,13 +240,15 @@ func (a *App) SetLanguage(lang string) error {
 	a.mu.Lock()
 	a.Config.Language = "en"
 	cfg := a.Config
-	wow := a.WowDir
+	flavors := append([]wowpath.Flavor(nil), a.Flavors...)
 	a.mu.Unlock()
 	if err := config.Save(cfg); err != nil {
 		return err
 	}
-	if wow != "" {
-		return install.WriteLanguage(wow, "en")
+	for _, f := range flavors {
+		if err := install.WriteLanguage(f.Path, "en"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
