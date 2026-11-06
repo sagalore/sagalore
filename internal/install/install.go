@@ -167,6 +167,36 @@ func tocBody(mode, name string, bodies map[string][]byte, original []byte) []byt
 	}
 }
 
+// ApplyClientTOCs rewrites TOC files already present in the addon folder for
+// mode. Used after extracting a release zip so Forever still forces interface 16001.
+func ApplyClientTOCs(wowDir, mode string) error {
+	dest := wowpath.AddonDir(wowDir)
+	mode = wowpath.NormalizeClient(mode)
+	bodies, err := readTOCBodies(func(name string) ([]byte, error) {
+		return os.ReadFile(filepath.Join(dest, name))
+	})
+	if err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dest)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() || !isTOC(e.Name()) {
+			continue
+		}
+		original, err := os.ReadFile(filepath.Join(dest, e.Name()))
+		if err != nil {
+			return err
+		}
+		if err := writeFile(filepath.Join(dest, e.Name()), tocBody(mode, e.Name(), bodies, original)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // WriteLanguage records the companion language for the addon.
 // English only for now; lang is ignored so a stale config cannot flip the UI.
 func WriteLanguage(wowDir, lang string) error {

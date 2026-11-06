@@ -118,16 +118,16 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `Sagalore — a saga log for a World of Warcraft group
 
   sagalore                       start, install the addon, log in with Battle.net
-  sagalore --client retail       use _retail_
-  sagalore --client classic_era  use _classic_era_
-  sagalore --client classic      use _classic_
+  sagalore --wow-path /path      WoW install (all flavors under it get the addon)
   sagalore --api-url http://localhost:8080
   sagalore sync                  fetch sagas once
   sagalore setup                 optional folder and update repo
   sagalore --headless            run without a tray icon
 
-Environment: SAGALORE_API_URL, SAGALORE_CLIENT (forever|retail|classic_era|classic), SAGALORE_WOW_PATH, SAGALORE_DEV_TOKEN.
-Settings live in config.json. The program reads the chat log. It never sends keystrokes to the game.
+Environment: SAGALORE_API_URL, SAGALORE_WOW_PATH, SAGALORE_DEV_TOKEN.
+Settings live in config.json. The companion installs and syncs every installed
+flavor (_forever_, _classic_era_, and the others). It reads the chat log and
+SavedVariables. It never sends keystrokes to the game.
 `)
 }
 

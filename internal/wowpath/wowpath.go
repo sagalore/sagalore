@@ -242,6 +242,119 @@ func DetectClient(configured string, candidates []string, client string) (string
 	return found[0], nil
 }
 
+// Flavor is one WoW client folder that has Interface/AddOns.
+type Flavor struct {
+	Path   string
+	Client string // forever, retail, classic_era, classic, anniversary
+}
+
+// ClientOf returns the install mode for a flavor path. Unknown folders use forever.
+func ClientOf(path string) string {
+	if k := flavorKind(path); k != "" {
+		return k
+	}
+	return "forever"
+}
+
+func isFlavorFolderName(base string) bool {
+	b := strings.ToLower(strings.TrimSpace(base))
+	switch b {
+	case "_forever_", "forever", "_retail_", "_classic_era_", "_classic_", "_anniversary_", "classic":
+		return true
+	}
+	return strings.HasPrefix(b, "_") && strings.HasSuffix(b, "_") && flavorKind(base) != ""
+}
+
+// InstallRoot is the Battle.net install folder to persist in wow_path.
+// A path like .../World of Warcraft/_classic_era_ becomes .../World of Warcraft.
+// A standalone "World of Warcraft Forever" folder stays itself.
+func InstallRoot(path string) string {
+	path = filepath.Clean(path)
+	if path == "" || path == "." {
+		return path
+	}
+	if isFlavor(path) && isFlavorFolderName(filepath.Base(path)) {
+		return filepath.Dir(path)
+	}
+	return path
+}
+
+func flavorsInDir(dir string) []Flavor {
+	dir = filepath.Clean(dir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var found []Flavor
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		candidate := filepath.Join(dir, e.Name())
+		if !isFlavor(candidate) {
+			continue
+		}
+		found = append(found, Flavor{Path: candidate, Client: ClientOf(candidate)})
+	}
+	sort.SliceStable(found, func(i, j int) bool {
+		return score(found[i].Path, "forever") > score(found[j].Path, "forever")
+	})
+	return found
+}
+
+// ListFlavors returns every flavor under a configured path. A flavor folder
+// (.../_classic_era_) includes its siblings under the same install root.
+func ListFlavors(path string) []Flavor {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "" || path == "." {
+		return nil
+	}
+	root := InstallRoot(path)
+	if kids := flavorsInDir(root); len(kids) > 0 {
+		return kids
+	}
+	if isFlavor(path) {
+		return []Flavor{{Path: path, Client: ClientOf(path)}}
+	}
+	if root != path && isFlavor(root) {
+		return []Flavor{{Path: root, Client: ClientOf(root)}}
+	}
+	return nil
+}
+
+// DetectAll lists every installed flavor. A non-empty configured path limits
+// discovery to that install (and its sibling flavors). Empty configured scans candidates.
+func DetectAll(configured string, candidates []string) ([]Flavor, error) {
+	if strings.TrimSpace(configured) != "" {
+		list := ListFlavors(configured)
+		if len(list) == 0 {
+			return nil, errors.New("wow_path peker ikke på en WoW-mappe med Interface/AddOns")
+		}
+		return list, nil
+	}
+	var found []Flavor
+	seen := map[string]bool{}
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		for _, f := range ListFlavors(c) {
+			if seen[f.Path] {
+				continue
+			}
+			seen[f.Path] = true
+			found = append(found, f)
+		}
+	}
+	if len(found) == 0 {
+		return nil, errors.New("fant ikke World of Warcraft. Sett --wow-path eller wow_path i config.json")
+	}
+	sort.SliceStable(found, func(i, j int) bool {
+		return score(found[i].Path, "forever") > score(found[j].Path, "forever")
+	})
+	return found, nil
+}
+
 func AddonDir(wow string) string {
 	return filepath.Join(wow, "Interface", "AddOns", "Sagalore")
 }
