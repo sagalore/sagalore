@@ -38,26 +38,96 @@ const joinPageCSSExtra = `
     aspect-ratio: auto;
     min-height: 22rem;
   }
+  /* Section cue above the checklist — quieter than list item titles. */
+  .lead.chars-lead {
+    color: #b9b1a3;
+    font-size: 0.9rem;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.2rem;
+  }
+  .lead.chars-lead strong {
+    color: #e6d7a8;
+    font-weight: 600;
+  }
   .chars {
     list-style: none;
-    margin: 0.85rem 0 0;
+    margin: 0.4rem 0 0;
     padding: 0;
     text-align: left;
   }
   .chars li {
+    margin: 0.2rem 0;
+  }
+  .chars label {
     display: flex;
-    align-items: center;
-    gap: 0.55rem;
-    margin: 0.35rem 0;
-    color: #e6e0d4;
-    font-size: 0.95rem;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+    align-items: flex-start;
+    gap: 0.65rem;
+    cursor: pointer;
+    padding: 0.42rem 0.5rem;
+    border-radius: 0.2rem;
+  }
+  .chars label:hover {
+    background: rgba(201, 162, 74, 0.08);
   }
   .chars input {
     width: 1rem;
     height: 1rem;
+    margin-top: 0.32rem;
+    flex: 0 0 auto;
     accent-color: var(--gold);
   }
+  .char-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  .char-name {
+    color: #f6f0e6;
+    font: 600 1.08rem/1.25 var(--serif);
+    letter-spacing: 0.01em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  }
+  .char-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.3rem 0.5rem;
+    font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: 0.78rem;
+    letter-spacing: 0.01em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  }
+  .char-race {
+    color: #a8b8d2;
+    font-weight: 500;
+  }
+  .char-class {
+    font-weight: 700;
+  }
+  .char-realm {
+    color: rgba(240, 208, 120, 0.78);
+    font-weight: 500;
+  }
+  .char-realm::before {
+    content: "·";
+    margin-right: 0.55rem;
+    color: rgba(168, 184, 210, 0.45);
+  }
+  .class-warrior { color: #c79c6e; }
+  .class-paladin { color: #f58cba; }
+  .class-hunter { color: #abd473; }
+  .class-rogue { color: #fff569; }
+  .class-priest { color: #f0ebe3; }
+  .class-shaman { color: #4f9fff; }
+  .class-mage { color: #69ccf0; }
+  .class-warlock { color: #9482c9; }
+  .class-druid { color: #ff7d0a; }
+  .class-deathknight { color: #c41f3b; }
+  .class-monk { color: #00ff96; }
+  .class-demonhunter { color: #a330c9; }
+  .class-evoker { color: #33937f; }
   .flash {
     margin: 0.6rem 0 0;
     text-align: center;
@@ -82,6 +152,31 @@ const joinPageCSSExtra = `
     height: 3.5rem;
     padding: 0.1rem 2.6rem 0;
   }
+  /* banner.png has ~23% empty pad under the gold rim. Collapse that pad in
+     layout so Sign out can sit just under the visible plaque. */
+  .who:has(+ .who-actions) {
+    margin-bottom: -1.85rem;
+  }
+  .who-actions {
+    display: flex;
+    justify-content: center;
+    position: relative;
+    z-index: 1;
+    margin-top: 0.2rem;
+  }
+  .who-actions + .lead {
+    margin-top: 1.7rem;
+  }
+  a.signout {
+    color: rgba(168, 184, 210, 0.72);
+    font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: 0.78rem;
+    letter-spacing: 0.02em;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  }
+  a.signout:hover { color: #c9d6ea; }
 `
 
 type joinPageView struct {
@@ -91,6 +186,7 @@ type joinPageView struct {
 	Who         string
 	Token       string
 	LoginURL    string
+	SignOutURL  string
 	InstallURL  string
 	Message     string
 	Error       string
@@ -103,8 +199,38 @@ type joinPageView struct {
 }
 
 type joinCharView struct {
-	ID   string
-	Label string
+	ID         string
+	Name       string
+	Realm      string
+	Race       string
+	Class      string
+	ClassSlug  string
+}
+
+func joinCharFrom(c contract.Character) joinCharView {
+	return joinCharView{
+		ID:        c.ID,
+		Name:      strings.TrimSpace(c.Name),
+		Realm:     strings.TrimSpace(c.Realm),
+		Race:      strings.TrimSpace(c.Race),
+		Class:     strings.TrimSpace(c.Class),
+		ClassSlug: classSlug(c.Class),
+	}
+}
+
+func classSlug(class string) string {
+	s := strings.ToLower(strings.TrimSpace(class))
+	s = strings.ReplaceAll(s, " ", "")
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, "'", "")
+	switch s {
+	case "deathknight", "dk":
+		return "deathknight"
+	case "demonhunter", "dh":
+		return "demonhunter"
+	default:
+		return s
+	}
 }
 
 func joinSessionCookie(publicBase, token string, r *http.Request) *http.Cookie {
@@ -152,11 +278,12 @@ func (s *Server) joinPageGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := joinPageView{
-		Title:     "Join " + info.GroupName,
-		GroupName: info.GroupName,
-		Mode:      info.Mode,
-		Token:     token,
-		LoginURL:  "/join/" + url.PathEscape(token) + "/login",
+		Title:      "Join " + info.GroupName,
+		GroupName:  info.GroupName,
+		Mode:       info.Mode,
+		Token:      token,
+		LoginURL:   "/join/" + url.PathEscape(token) + "/login",
+		SignOutURL: "/join/" + url.PathEscape(token) + "?signout=1",
 	}
 	player, ok := s.playerFromJoinCookie(r)
 	if !ok {
@@ -183,9 +310,7 @@ func (s *Server) joinPageGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, c := range full.Characters {
-		view.Characters = append(view.Characters, joinCharView{
-			ID: c.ID, Label: c.Name + " — " + c.Realm,
-		})
+		view.Characters = append(view.Characters, joinCharFrom(c))
 	}
 	s.renderJoinPage(w, view)
 }
@@ -270,16 +395,17 @@ func (s *Server) joinPagePost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		info, _ := s.store.JoinLinkInfo(r.Context(), token, player.ID)
 		view := joinPageView{
-			Title:     "Join " + info.GroupName,
-			GroupName: info.GroupName,
-			Mode:      info.Mode,
-			Token:     token,
-			Who:       player.BattleTag,
-			Error:     "Could not join with those characters.",
-			LoginURL:  "/join/" + url.PathEscape(token) + "/login",
+			Title:      "Join " + info.GroupName,
+			GroupName:  info.GroupName,
+			Mode:       info.Mode,
+			Token:      token,
+			Who:        player.BattleTag,
+			Error:      "Could not join with those characters.",
+			LoginURL:   "/join/" + url.PathEscape(token) + "/login",
+			SignOutURL: "/join/" + url.PathEscape(token) + "?signout=1",
 		}
 		for _, c := range info.Characters {
-			view.Characters = append(view.Characters, joinCharView{ID: c.ID, Label: c.Name + " — " + c.Realm})
+			view.Characters = append(view.Characters, joinCharFrom(c))
 		}
 		if len(view.Characters) == 0 {
 			view.EmptyRoster = true
@@ -349,20 +475,34 @@ var joinTmpl = template.Must(template.New("join").Parse(`<!doctype html>
         </div>
     {{else if .EmptyRoster}}
         <div class="who"><strong>Signed in as</strong><span class="tag">{{.Who}}</span></div>
+        {{if .SignOutURL}}<div class="who-actions"><a class="signout" href="{{.SignOutURL}}">Sign out</a></div>{{end}}
         <p class="lead">No characters yet.</p>
         <p class="body">Install Sagalore, then log into World of Warcraft with Sagalore active at least once so your characters show up here. Reload this page after.</p>
         <div class="actions"><a class="btn allow install" href="{{.InstallURL}}">Install Sagalore</a></div>
     {{else}}
         <div class="who"><strong>Signed in as</strong><span class="tag">{{.Who}}</span></div>
-        <p class="lead">Choose characters for <strong>{{.GroupName}}</strong>.</p>
+        {{if .SignOutURL}}<div class="who-actions"><a class="signout" href="{{.SignOutURL}}">Sign out</a></div>{{end}}
+        <p class="lead chars-lead">Choose characters for <strong>{{.GroupName}}</strong></p>
         {{if eq .Mode "gated"}}<p class="body">An owner will confirm before they are added.</p>{{end}}
         <form method="post" action="/join/{{.Token}}">
           <ul class="chars">
             {{range .Characters}}
-            <li><label><input type="checkbox" name="character_id" value="{{.ID}}"> {{.Label}}</label></li>
+            <li>
+              <label>
+                <input type="checkbox" name="character_id" value="{{.ID}}">
+                <span class="char-copy">
+                  <span class="char-name">{{.Name}}</span>
+                  <span class="char-meta">
+                    {{if .Race}}<span class="char-race">{{.Race}}</span>{{end}}
+                    {{if .Class}}<span class="char-class{{if .ClassSlug}} class-{{.ClassSlug}}{{end}}">{{.Class}}</span>{{end}}
+                    {{if .Realm}}<span class="char-realm">{{.Realm}}</span>{{end}}
+                  </span>
+                </span>
+              </label>
+            </li>
             {{end}}
           </ul>
-          <p class="hint">Don't see your character? Log in with that character while Sagalore is active, then reload this page.</p>
+          <p class="hint">Don't see your character? Log into World of Warcraft on that character while Sagalore is active, then reload this page.</p>
           <div class="actions">
             <button class="allow" type="submit">{{if eq .Mode "gated"}}Request join{{else}}Join{{end}}</button>
           </div>

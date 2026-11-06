@@ -305,6 +305,15 @@ func TestE2EClickJoinLinkHTMLOpen(t *testing.T) {
 	if !strings.Contains(page, "Magni") || !strings.Contains(page, "Mira") || !strings.Contains(page, `name="character_id"`) {
 		t.Fatalf("expected character checkboxes:\n%s", page)
 	}
+	if !strings.Contains(page, "Dwarf") || !strings.Contains(page, "Warrior") || !strings.Contains(page, "class-warrior") {
+		t.Fatalf("expected race/class styling:\n%s", page)
+	}
+	if !strings.Contains(page, "Log into World of Warcraft on that character") {
+		t.Fatalf("expected WoW login hint:\n%s", page)
+	}
+	if !strings.Contains(page, "Sign out") || !strings.Contains(page, "signout=1") {
+		t.Fatalf("expected sign out link:\n%s", page)
+	}
 	if !strings.Contains(page, "Guest#9") {
 		t.Fatalf("expected signed-in BattleTag:\n%s", page)
 	}
