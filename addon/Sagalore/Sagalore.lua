@@ -18,7 +18,9 @@ local function L(key)
     end
     return key
 end
-local player = { name = "", realm = "", level = 1, race = "", class = "", battletag = "" }
+-- realm: Classic = realm name. Forever = surname (API character key with name).
+-- ruleset: Forever only (PvP / Normal / …). surname: Forever only.
+local player = { name = "", surname = "", realm = "", ruleset = "", level = 1, race = "", class = "", battletag = "" }
 local world = {
     zone = "", subzone = "", minimap = "", mapID = nil, x = nil, y = nil,
     npc = "", object = "", killName = nil, killSecret = false, deathName = nil, attests = {},
@@ -74,6 +76,8 @@ local syncScrollBar
 local scrollBy
 local bindWheel
 local wheelOnFrame
+-- Forward decl: show()/PLAYER paths call build before its definition below.
+local build
 
 local function secret(v)
     if issecretvalue == nil or v == nil then
@@ -109,6 +113,84 @@ local function norm(s)
         return ""
     end
     return (s:lower():gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- Forever / retail helpers packed into one local (Lua 5.1 main-chunk limit is 200).
+local CF = {
+    interact = false,
+}
+function CF.toc()
+    -- Companion forces Forever TOC to Interface 16001. Prefer our metadata so
+    -- a mismatched GetBuildInfo tocversion cannot disable Forever safe-mode.
+    if GetAddOnMetadata then
+        local ok, iface = pcall(GetAddOnMetadata, "Sagalore", "Interface")
+        local n = ok and tonumber(iface) or nil
+        if n and n > 0 then
+            return n
+        end
+    end
+    if GetBuildInfo then
+        local ok, _, _, _, toc = pcall(GetBuildInfo)
+        local n = ok and tonumber(toc) or nil
+        if n and n > 0 then
+            return n
+        end
+        ok, toc = pcall(function()
+            return select(4, GetBuildInfo())
+        end)
+        n = ok and tonumber(toc) or nil
+        if n and n > 0 then
+            return n
+        end
+    end
+    return 0
+end
+function CF.forever()
+    local v = CF.toc()
+    if v >= 16000 and v < 20000 then
+        return true
+    end
+    -- Forever client version is 1.60.x even if a TOC rewrite was missed.
+    if GetBuildInfo then
+        local ok, ver = pcall(function()
+            return select(1, GetBuildInfo())
+        end)
+        if ok and type(ver) == "string" and ver:match("^1%.60%.") then
+            return true
+        end
+    end
+    return false
+end
+-- Forever / retail tabs sit below the dialog as separate controls — no edge mask.
+function CF.standaloneTabs()
+    local v = CF.toc()
+    if v >= 16000 and v < 20000 then
+        return true
+    end
+    if v >= 100000 then
+        return true
+    end
+    if WOW_PROJECT_ID and WOW_PROJECT_MAINLINE and WOW_PROJECT_ID == WOW_PROJECT_MAINLINE then
+        return true
+    end
+    return false
+end
+function CF.sameRealm(a, b)
+    if same(a, b) then
+        return true
+    end
+    if type(a) ~= "string" or type(b) ~= "string" then
+        return false
+    end
+    local na = (a:lower():gsub("[%s%-%']", ""))
+    local nb = (b:lower():gsub("[%s%-%']", ""))
+    return na ~= "" and na == nb
+end
+function CF.displayName()
+    if player.surname ~= "" then
+        return player.name .. " " .. player.surname
+    end
+    return player.name
 end
 
 local function unixNow()
@@ -255,25 +337,81 @@ local function cachePlayer()
     if InCombatLockdown and InCombatLockdown() then
         return
     end
-    if UnitFullName then
-        local ok, name, realm = pcall(UnitFullName, "player")
-        if ok then
-            local n = plainString(name)
-            if n then
-                player.name = n
-            end
-            local r = plainString(realm)
-            if r then
-                player.realm = r
+    -- Forever (post-70009): UnitFullName is first name + surname, not name + realm.
+    -- GetRealmName is the ruleset (PvP / Normal / …). Character uniqueness is
+    -- name + surname per region; we keep surname in the API `realm` field until
+    -- a dedicated surname column exists (WTF folder is still Name-Surname).
+    if CF.forever() then
+        if UnitFullName then
+            local ok, name, surname = pcall(UnitFullName, "player")
+            if ok then
+                local n = plainString(name)
+                if n then
+                    player.name = n
+                end
+                local s = plainString(surname)
+                if s then
+                    player.surname = s
+                    player.realm = s
+                end
             end
         end
-    end
-    if player.realm == "" and GetRealmName then
-        local ok, realm = pcall(GetRealmName)
-        if ok then
-            local r = plainString(realm)
-            if r then
-                player.realm = r
+        if player.name == "" and UnitName then
+            local ok, name = pcall(UnitName, "player")
+            if ok then
+                local n = plainString(name)
+                if n then
+                    -- Older Forever builds returned "Name Surname" from UnitName.
+                    local first, rest = n:match("^(%S+)%s+(.+)$")
+                    if first and rest then
+                        player.name = first
+                        player.surname = rest
+                        player.realm = rest
+                    else
+                        player.name = n
+                    end
+                end
+            end
+        end
+        if GetRealmName then
+            local ok, ruleset = pcall(GetRealmName)
+            if ok then
+                local r = plainString(ruleset)
+                if r then
+                    player.ruleset = r
+                end
+            end
+        end
+    else
+        if UnitFullName then
+            local ok, name, realm = pcall(UnitFullName, "player")
+            if ok then
+                local n = plainString(name)
+                if n then
+                    player.name = n
+                end
+                local r = plainString(realm)
+                if r then
+                    player.realm = r
+                end
+            end
+        end
+        if player.realm == "" and GetRealmName then
+            local ok, realm = pcall(GetRealmName)
+            if ok then
+                local r = plainString(realm)
+                if r then
+                    player.realm = r
+                end
+            end
+        end
+        if player.realm == "" and GetNormalizedRealmName then
+            local ok, realm = pcall(GetNormalizedRealmName)
+            if ok then
+                local r = plainString(realm)
+                if r then
+                    player.realm = r
+                end
             end
         end
     end
@@ -387,7 +525,7 @@ local function currentEntries()
             local forMe = same(entry.character, player.name) or entry.character == "*"
             if forMe then
                 local realm = entry.realm
-                if type(realm) ~= "string" or realm == "" or player.realm == "" or same(realm, player.realm) or entry.character == "*" then
+                if type(realm) ~= "string" or realm == "" or player.realm == "" or CF.sameRealm(realm, player.realm) or entry.character == "*" then
                     local visible = true
                     if type(SagaloreInvite) == "table" and type(SagaloreInvite.entryVisible) == "function" then
                         visible = SagaloreInvite.entryVisible(SagaloreDB, entry)
@@ -1221,6 +1359,11 @@ end
 
 local dropListHooked = false
 local function hookDropListSpacing()
+    -- Forever: do not hook Blizzard frames (WorldFrame / DropDownList). That
+    -- taints the native gamepad UI and triggers ADDON_ACTION_FORBIDDEN.
+    if CF.forever() then
+        return
+    end
     if WorldFrame and WorldFrame.HookScript and not SagaloreBoard.worldClickHooked then
         SagaloreBoard.worldClickHooked = true
         WorldFrame:HookScript("OnMouseDown", function()
@@ -1883,7 +2026,9 @@ local function readLocation()
             x, y = xyOf(a, b)
         end
     end
-    if (not x or not y) and GetPlayerMapPosition then
+    -- SetMapToCurrentZone / GetPlayerMapPosition are protected on Forever.
+    -- pcall still raises the "blocked from an action" dialog. C_Map only there.
+    if (not x or not y) and GetPlayerMapPosition and not CF.forever() then
         if SetMapToCurrentZone then
             pcall(SetMapToCurrentZone)
         end
@@ -2397,14 +2542,24 @@ function SagaloreBoard.placeTabs(active)
     if not frame or not tabs[1] or not tabs[2] then
         return
     end
-    -- Same baseline: tab tops sit on the dialog's bottom gold edge.
-    local y = 6
+    -- Classic Era: tabs tuck under the gold edge with a short mask.
+    -- Forever / retail: tabs sit below as separate controls (no mask, no overlap).
+    local standalone = CF.standaloneTabs()
+    local y = standalone and 2 or 6
     local x = 11
     local level = frame:GetFrameLevel() or 1
     for i = 1, 2 do
         local tab = tabs[i]
         SagaloreBoard.tintTab(tab)
-        SagaloreBoard.ensureTabMask(tab)
+        if standalone then
+            if tab.masks then
+                for m = 1, #tab.masks do
+                    tab.masks[m]:Hide()
+                end
+            end
+        else
+            SagaloreBoard.ensureTabMask(tab)
+        end
         tab:ClearAllPoints()
         if i == 1 then
             tab:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", x, y)
@@ -2413,11 +2568,12 @@ function SagaloreBoard.placeTabs(active)
             if w < 40 then
                 w = 80
             end
-            tab:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", x + w - 15, y)
+            local offset = standalone and (w + 6) or (w - 15)
+            tab:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", x + offset, y)
         end
         local on = i == active
         tab:SetFrameLevel(level + (on and 8 or 2))
-        if tab.masks then
+        if not standalone and tab.masks then
             for m = 1, #tab.masks do
                 if on then
                     tab.masks[m]:Show()
@@ -3220,7 +3376,7 @@ refresh = function()
             detailFS:SetText(L("ui.no_sagas"))
             detailFS:SetTextColor(INK.r, INK.g, INK.b)
         else
-            detailFS:SetText(string.format(L("ui.no_sagas_for"), player.name))
+            detailFS:SetText(string.format(L("ui.no_sagas_for"), CF.displayName()))
             detailFS:SetTextColor(INK.r, INK.g, INK.b)
         end
         detailFS:SetWidth(width)
@@ -3700,28 +3856,37 @@ local function onWorld()
 end
 
 local function show()
-    if frame then
-        frame:Show()
-        onWorld()
-        if not preserveCompletedSelection then
-            local entry = selectedID and findEntry(selectedID) or nil
-            if entry and isComplete(entry) then
-                local hasOpen = false
-                local entries = currentEntries()
-                for i = 1, #entries do
-                    if not isComplete(entries[i]) then
-                        hasOpen = true
-                        break
-                    end
-                end
-                if not hasOpen then
-                    selectedID = nil
+    -- Forever: main UI is deferred until first open (see PLAYER_LOGIN).
+    if not frame then
+        local ok, err = pcall(build)
+        if not ok then
+            chat("|cffc9a227Sagalore|r: UI failed — " .. tostring(err))
+            return
+        end
+    end
+    if not frame then
+        return
+    end
+    frame:Show()
+    onWorld()
+    if not preserveCompletedSelection then
+        local entry = selectedID and findEntry(selectedID) or nil
+        if entry and isComplete(entry) then
+            local hasOpen = false
+            local entries = currentEntries()
+            for i = 1, #entries do
+                if not isComplete(entries[i]) then
+                    hasOpen = true
+                    break
                 end
             end
+            if not hasOpen then
+                selectedID = nil
+            end
         end
-        preserveCompletedSelection = false
-        refresh()
     end
+    preserveCompletedSelection = false
+    refresh()
 end
 
 local function hide()
@@ -3997,9 +4162,33 @@ end
 
 -- Same bottom tabs as the character / social window.
 -- Minimap is created before build(), so a template error cannot hide the icon.
+-- Forever (and newer retail) renamed/removed CharacterFrameTabButtonTemplate;
+-- a hard CreateFrame error there left the dialog shell empty.
 local function makeBottomTab(parent, id, label)
     local name = parent:GetName() and (parent:GetName() .. "Tab" .. id) or nil
-    local tab = CreateFrame("Button", name, parent, "CharacterFrameTabButtonTemplate")
+    local tab
+    local templates = {
+        "CharacterFrameTabButtonTemplate", -- Classic Era
+        "CharacterFrameTabTemplate",      -- retail / Forever
+        "PanelTabButtonTemplate",
+    }
+    for i = 1, #templates do
+        local ok, created = pcall(CreateFrame, "Button", name, parent, templates[i])
+        if ok and created then
+            tab = created
+            break
+        end
+    end
+    if not tab then
+        tab = CreateFrame("Button", name, parent)
+        tab:SetSize(100, 32)
+        local bg = tab:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0.12, 0.08, 0.04, 0.95)
+        local fs = tab:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("CENTER", 0, 1)
+        tab:SetFontString(fs)
+    end
     tab:SetID(id)
     tab:SetText(label)
     if PanelTemplates_TabResize then
@@ -4013,16 +4202,25 @@ local function makeBottomTab(parent, id, label)
 end
 
 local function ensureMinimapButton()
-    if minimapBtn or not Minimap then
+    if minimapBtn then
         return
     end
-    local btn = CreateFrame("Button", "SagaloreMinimapButton", Minimap)
+    -- Forever: do not parent to Minimap (gamepad taint). Anchor to Minimap
+    -- from UIParent instead — same place as Classic, without a Minimap child.
+    local parent = UIParent
+    if not CF.forever() and Minimap then
+        parent = Minimap
+    end
+    if not parent then
+        return
+    end
+    local btn = CreateFrame("Button", "SagaloreMinimapButton", parent)
     minimapBtn = btn
     -- Larger hit/visual size so the emblem is not crushed into ~20px.
     btn:SetSize(40, 40)
     btn:SetFrameStrata("MEDIUM")
-    btn:RegisterForClicks("LeftButtonUp")
-    btn:RegisterForDrag("LeftButton")
+    btn:SetFrameLevel(parent:GetFrameLevel() + 8)
+    btn:RegisterForClicks("AnyUp")
     btn.angle = math.pi * 0.75
     if type(SagaloreDB) == "table" and type(SagaloreDB.minimapAngle) == "number" then
         btn.angle = SagaloreDB.minimapAngle
@@ -4049,19 +4247,28 @@ local function ensureMinimapButton()
     border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     local function placeMinimap(self)
         local angle = self.angle or (math.pi * 0.75)
-        local radius = (Minimap:GetWidth() / 2) + 8
+        local anchor = Minimap or UIParent
+        local radius = ((anchor.GetWidth and anchor:GetWidth()) or 140) / 2 + 8
         self:ClearAllPoints()
-        self:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+        self:SetPoint("CENTER", anchor, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
     end
     placeMinimap(btn)
+    -- Only treat as a drag if the angle actually changed. Forever can fire
+    -- OnDragStart on a plain click; marking moved there swallowed OnClick.
+    btn:RegisterForDrag("LeftButton")
     btn:SetScript("OnDragStart", function(self)
         self.dragging = true
-        self.moved = true
+        self.dragStartAngle = self.angle
     end)
     btn:SetScript("OnDragStop", function(self)
         self.dragging = false
-        initDB()
-        SagaloreDB.minimapAngle = self.angle
+        local start = self.dragStartAngle
+        self.dragStartAngle = nil
+        if start and math.abs((self.angle or 0) - start) > 0.05 then
+            self.moved = true
+            initDB()
+            SagaloreDB.minimapAngle = self.angle
+        end
     end)
     btn:SetScript("OnUpdate", function(self)
         if not self.dragging then
@@ -4105,7 +4312,7 @@ local function ensureMinimapButton()
     updateMinimapUnread()
 end
 
-local function build()
+build = function()
     if built then
         ensureMinimapButton()
         return
@@ -4580,9 +4787,10 @@ local function build()
     built = true
 end
 
-SLASH_SAGALORE1 = "/sagalore"
-SLASH_SAGALORE2 = "/sl"
-SlashCmdList.SAGALORE = function(msg)
+-- Slash commands: on Forever + gamepad UI, *any* addon slash handler taints
+-- chat cleanup and pops ADDON_ACTION_FORBIDDEN (Blizzard bug). Register only
+-- outside Forever; Forever opens from the minimap button.
+function CF.runSlash(msg)
     msg = string.lower(string.gsub(msg or "", "^%s+", ""))
     if msg == "hide" then
         hide()
@@ -4647,6 +4855,60 @@ SlashCmdList.SAGALORE = function(msg)
         return
     end
     show()
+end
+
+function CF.registerSlash()
+    if SLASH_SAGALORE1 then
+        return
+    end
+    -- Forever: registering during ADDON_LOADED / PLAYER_LOGIN taints chat →
+    -- gamepad cleanup. Defer until after the blocked-action window.
+    if CF.forever() and not CF.slashReady then
+        if CF.slashWait then
+            return
+        end
+        CF.slashWait = true
+        if C_Timer and C_Timer.After then
+            C_Timer.After(3, function()
+                CF.slashReady = true
+                CF.slashWait = false
+                CF.registerSlash()
+            end)
+        end
+        return
+    end
+    SLASH_SAGALORE1 = "/sagalore"
+    SLASH_SAGALORE2 = "/sl"
+    SlashCmdList.SAGALORE = function(msg)
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                CF.runSlash(msg)
+            end)
+            return
+        end
+        CF.runSlash(msg)
+    end
+end
+
+-- Log the protected function name so we can see *what* Forever blocks (chat only).
+function CF.installForbiddenProbe()
+    if CF.probe then
+        return
+    end
+    CF.probe = true
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+    f:RegisterEvent("ADDON_ACTION_BLOCKED")
+    f:SetScript("OnEvent", function(_, _, addonName, funcName)
+        if addonName ~= "Sagalore" then
+            return
+        end
+        if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cffc9a227Sagalore|r: Blizzard blocked |" .. tostring(funcName) .. "| (Forever gamepad taint — use the minimap button)"
+            )
+        end
+    end)
 end
 
 -- Most slash emotes raise CHAT_MSG_TEXT_EMOTE. Silent ones (/sit, /stand,
@@ -4775,9 +5037,13 @@ end
 -- Right-click / the interact key calls InteractUnit. Classic does not emit a
 -- gossip event when the NPC has no dialogue, so latch the unit the same way
 -- an open panel does. /talk remains the fallback when this hook does not run.
-local interactHooked = false
+-- Forever's native gamepad UI taints InteractUnit hooks hard — skip there.
 local function installInteractHook()
-    if interactHooked or type(hooksecurefunc) ~= "function" then
+    if CF.interact or type(hooksecurefunc) ~= "function" then
+        return
+    end
+    if CF.forever() then
+        CF.interact = true
         return
     end
     local ok = pcall(function()
@@ -4787,7 +5053,7 @@ local function installInteractHook()
         end)
     end)
     if ok then
-        interactHooked = true
+        CF.interact = true
     end
 end
 
@@ -4799,6 +5065,11 @@ local silentSlashWrapped = false
 -- Wrap the slash handlers so authored SIT/STAND steps still fire.
 local function installSilentEmoteSlashWrap()
     if silentSlashWrapped or type(SlashCmdList) ~= "table" then
+        return
+    end
+    -- Wrapping Blizzard slash handlers taints Forever chat → gamepad cleanup.
+    if CF.forever() then
+        silentSlashWrapped = true
         return
     end
     local map = {
@@ -4824,6 +5095,13 @@ local function installSilentEmoteSlashWrap()
 end
 
 local function installEmoteHook()
+    -- hooksecurefunc("DoEmote") taints Forever's gamepad UI path. Chat emote
+    -- lines still drive noteEmote via CHAT_MSG_TEXT_EMOTE.
+    if CF.forever() then
+        emoteHooked = true
+        installSilentEmoteSlashWrap()
+        return
+    end
     if type(hooksecurefunc) == "function" and not emoteHooked then
         local ok = pcall(function()
             hooksecurefunc("DoEmote", function(token, unit)
@@ -5011,6 +5289,12 @@ events:RegisterEvent("BAG_UPDATE")
 events:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 events:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 events:SetScript("OnUpdate", function(_, elapsed)
+    -- File load is during /reload, before the player exists. onWorld from
+    -- here was calling classic map APIs and tripping Forever's blocked-action
+    -- dialog with no click. Wait until PLAYER_ENTERING_WORLD sets CF.live.
+    if not CF.live then
+        return
+    end
     if SagaloreBoard.pendingRefresh then
         SagaloreBoard.pendingRefresh = false
         if refresh then
@@ -5032,17 +5316,30 @@ events:SetScript("OnEvent", function(_, event, ...)
         end
         initDB()
         registerPrefix(PREFIX)
+        CF.installForbiddenProbe()
+        CF.registerSlash()
         installEmoteHook()
         installInteractHook()
         return
     end
     if event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
         initDB()
+        CF.installForbiddenProbe()
+        CF.registerSlash()
         installEmoteHook()
         installInteractHook()
         showFreshNotice()
         cachePlayer()
-        build()
+        -- Forever gamepad UI runs right after /reload. Building our frame then
+        -- (UIDropDownMenu / CharacterFrame tabs / UISpecialFrames) taints that
+        -- path and pops ADDON_ACTION_FORBIDDEN with no player click. Minimap
+        -- only at login; full UI on first open.
+        if CF.forever() then
+            ensureMinimapButton()
+        else
+            build()
+        end
+        CF.live = true
         emitCharacter()
         onWorld()
         maybeInvite()
