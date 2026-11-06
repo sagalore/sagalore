@@ -198,6 +198,39 @@ function CF.displayName()
     return player.name
 end
 
+-- CHAT_MSG_TEXT_EMOTE fires for every emote you see, including other players.
+-- Only the player's own line may advance saga emote steps.
+function CF.ownEmoteAuthor(author, guid)
+    local mine = plainString(player.name)
+    local who = plainString(author)
+    if who and mine then
+        if same(who, mine) then
+            return true
+        end
+        local short = who:match("^([^%-]+)")
+        if short and same(short, mine) then
+            return true
+        end
+        if player.surname ~= "" then
+            if same(who, mine .. " " .. player.surname) or same(who, mine .. "-" .. player.surname) then
+                return true
+            end
+        end
+        return false
+    end
+    if guid and UnitGUID then
+        local ok, me = pcall(UnitGUID, "player")
+        local g = plainString(guid)
+        local selfGUID = ok and plainString(me) or nil
+        if g and selfGUID then
+            return g == selfGUID
+        end
+    end
+    -- No actor on the chat line: ignore. Classic silent/DoEmote hooks already
+    -- call noteEmote directly; Forever always has an author on TEXT_EMOTE.
+    return false
+end
+
 local function unixNow()
     if GetServerTime then
         local ok, v = pcall(GetServerTime)
@@ -5725,7 +5758,11 @@ events:SetScript("OnEvent", function(_, event, ...)
     if event == "CHAT_MSG_TEXT_EMOTE" then
         -- Prefer the chat line (correct for this emote) over lastDoEmoteToken,
         -- which can be stale after a wrong-emote negative test (/wave then /salute).
-        local msg = ...
+        -- arg2 is the actor; nearby players' waves must not complete our steps.
+        local msg, author, _, _, _, _, _, _, _, _, _, senderGUID = ...
+        if not CF.ownEmoteAuthor(author, senderGUID) then
+            return
+        end
         local inferred = inferEmoteToken(msg)
         local token = inferred
         if (not token or token == "") and type(world.pendingEmote) == "table" then
