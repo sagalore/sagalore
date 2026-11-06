@@ -9,6 +9,11 @@ local PREFIX = "Sagalore"
 -- Same default as internal/app DefaultCreateSagasURL (copyable EditBox in the log).
 local CREATE_SAGAS_URL = "https://sagalore.app/#create"
 
+-- Forever: RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED") is forbidden under the
+-- official gamepad UI (bisect: CLEU alone → ADDON_ACTION_FORBIDDEN
+-- Frame:RegisterEvent). Never register CLEU there; kill credit uses target-death
+-- polling instead (see foreverPollKills).
+
 local function L(key)
     if type(Sagalore_L) == "function" then
         local value = Sagalore_L(key)
@@ -4788,8 +4793,8 @@ build = function()
 end
 
 -- Slash commands: on Forever + gamepad UI, *any* addon slash handler taints
--- chat cleanup and pops ADDON_ACTION_FORBIDDEN (Blizzard bug). Register only
--- outside Forever; Forever opens from the minimap button.
+-- chat cleanup and pops ADDON_ACTION_FORBIDDEN (Blizzard bug). Forever opens
+-- from the minimap button only — deferred registration still taints.
 function CF.runSlash(msg)
     msg = string.lower(string.gsub(msg or "", "^%s+", ""))
     if msg == "hide" then
@@ -4861,20 +4866,9 @@ function CF.registerSlash()
     if SLASH_SAGALORE1 then
         return
     end
-    -- Forever: registering during ADDON_LOADED / PLAYER_LOGIN taints chat →
-    -- gamepad cleanup. Defer until after the blocked-action window.
-    if CF.forever() and not CF.slashReady then
-        if CF.slashWait then
-            return
-        end
-        CF.slashWait = true
-        if C_Timer and C_Timer.After then
-            C_Timer.After(3, function()
-                CF.slashReady = true
-                CF.slashWait = false
-                CF.registerSlash()
-            end)
-        end
+    -- Forever + official gamepad UI: SlashCmdList entries taint chat ClearChat
+    -- → protected gamepad cleanup → Disable/Ignore dialog. Minimap only there.
+    if CF.forever() then
         return
     end
     SLASH_SAGALORE1 = "/sagalore"
@@ -4890,25 +4884,147 @@ function CF.registerSlash()
     end
 end
 
--- Log the protected function name so we can see *what* Forever blocks (chat only).
+-- Forever often delivers ADDON_ACTION_FORBIDDEN only to UIParent (StaticPopup)
+-- and our parallel RegisterEvent never runs — so last_forbidden stayed empty.
+-- Steal the events, log every firing (any addon), capture seterrorhandler, and
+-- suppress our own popup after recording.
+function CF.noteDebug(stage, extra)
+    initDB()
+    if type(SagaloreDB.debug) ~= "table" then
+        SagaloreDB.debug = { stages = {} }
+    end
+    if type(SagaloreDB.debug.stages) ~= "table" then
+        SagaloreDB.debug.stages = {}
+    end
+    local row = { stage = tostring(stage or "?"), at = unixNow() }
+    if type(extra) == "table" then
+        for k, v in pairs(extra) do
+            row[k] = v
+        end
+    elseif extra ~= nil then
+        row.extra = tostring(extra)
+    end
+    table.insert(SagaloreDB.debug.stages, row)
+    -- Keep the file small across many /reloads.
+    while #SagaloreDB.debug.stages > 40 do
+        table.remove(SagaloreDB.debug.stages, 1)
+    end
+    SagaloreDB.debug.last_stage = row.stage
+    SagaloreDB.debug.last_at = row.at
+end
+
+function CF.recordForbidden(source, event, a1, a2, a3, a4, msg)
+    local stack = ""
+    if debugstack then
+        local ok, s = pcall(debugstack, 2, 40, 40)
+        if ok and type(s) == "string" then
+            stack = s
+        end
+    end
+    initDB()
+    local row = {
+        source = tostring(source or "?"),
+        event = tostring(event or ""),
+        a1 = tostring(a1),
+        a2 = tostring(a2),
+        a3 = tostring(a3),
+        a4 = tostring(a4),
+        msg = type(msg) == "string" and msg:sub(1, 500) or "",
+        stack = stack:sub(1, 2000),
+        at = unixNow(),
+    }
+    SagaloreDB.last_forbidden = row
+    if type(SagaloreDB.forbidden_log) ~= "table" then
+        SagaloreDB.forbidden_log = {}
+    end
+    table.insert(SagaloreDB.forbidden_log, row)
+    while #SagaloreDB.forbidden_log > 10 do
+        table.remove(SagaloreDB.forbidden_log, 1)
+    end
+    print("Sagalore forbidden:", row.source, row.event, row.a1, row.a2, row.a3, row.a4, row.msg)
+    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "|cffc9a227Sagalore|r: blocked ["
+                .. row.source .. "] |"
+                .. row.a1 .. "| |"
+                .. row.a2 .. "| "
+                .. (row.msg ~= "" and row.msg or "")
+        )
+    end
+end
+
 function CF.installForbiddenProbe()
     if CF.probe then
         return
     end
     CF.probe = true
+    initDB()
+    local ver = ""
+    if GetBuildInfo then
+        local ok, v = pcall(function()
+            return select(1, GetBuildInfo())
+        end)
+        if ok and type(v) == "string" then
+            ver = v
+        end
+    end
+    SagaloreDB.debug = {
+        forever = CF.forever() and true or false,
+        toc = CF.toc(),
+        build = ver,
+        probe_at = unixNow(),
+        stages = (type(SagaloreDB.debug) == "table" and SagaloreDB.debug.stages) or {},
+    }
+    CF.noteDebug("probe_install", { forever = SagaloreDB.debug.forever, toc = SagaloreDB.debug.toc, build = ver })
+
+    -- Take the events away from UIParent so Blizzard's StaticPopup does not
+    -- swallow them before we can read the protected function name.
+    if UIParent and UIParent.UnregisterEvent then
+        pcall(UIParent.UnregisterEvent, UIParent, "ADDON_ACTION_FORBIDDEN")
+        pcall(UIParent.UnregisterEvent, UIParent, "ADDON_ACTION_BLOCKED")
+        CF.noteDebug("ui_parent_unregistered")
+    end
+
     local f = CreateFrame("Frame")
     f:RegisterEvent("ADDON_ACTION_FORBIDDEN")
     f:RegisterEvent("ADDON_ACTION_BLOCKED")
-    f:SetScript("OnEvent", function(_, _, addonName, funcName)
-        if addonName ~= "Sagalore" then
-            return
+    f:SetScript("OnEvent", function(_, event, a1, a2, a3, a4)
+        CF.recordForbidden("event", event, a1, a2, a3, a4, nil)
+        local ours = false
+        local s1 = tostring(a1 or "")
+        local s2 = tostring(a2 or "")
+        if s1 == "Sagalore" or s2 == "Sagalore" or s1:find("Sagalore", 1, true) or s2:find("Sagalore", 1, true) then
+            ours = true
         end
-        if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-            DEFAULT_CHAT_FRAME:AddMessage(
-                "|cffc9a227Sagalore|r: Blizzard blocked |" .. tostring(funcName) .. "| (Forever gamepad taint — use the minimap button)"
-            )
+        if ours and StaticPopup_Hide then
+            pcall(StaticPopup_Hide, "ADDON_ACTION_FORBIDDEN")
+            pcall(StaticPopup_Hide, "ADDON_ACTION_BLOCKED")
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    pcall(StaticPopup_Hide, "ADDON_ACTION_FORBIDDEN")
+                    pcall(StaticPopup_Hide, "ADDON_ACTION_BLOCKED")
+                end)
+            end
         end
     end)
+
+    if type(geterrorhandler) == "function" and type(seterrorhandler) == "function" then
+        local prev = geterrorhandler()
+        seterrorhandler(function(msg)
+            local s = tostring(msg or "")
+            if s:find("ADDON_ACTION_FORBIDDEN", 1, true)
+                or s:find("ADDON_ACTION_BLOCKED", 1, true)
+                or s:find("blocked from an action", 1, true)
+                or (s:find("Sagalore", 1, true) and s:find("protected", 1, true))
+            then
+                CF.recordForbidden("errorhandler", "lua", nil, nil, nil, nil, s)
+            end
+            if type(prev) == "function" then
+                return prev(msg)
+            end
+        end)
+        CF.noteDebug("errorhandler_wrapped")
+    end
 end
 
 -- Most slash emotes raise CHAT_MSG_TEXT_EMOTE. Silent ones (/sit, /stand,
@@ -5021,6 +5137,138 @@ local function npcName(unit)
     end
     local ok, name = pcall(UnitName, unit)
     return ok and plainString(name) or nil
+end
+
+-- Forever closes CLEU to addons (Spy/Forever guides). Remember mobs we engage
+-- (target / mouseover / focus / nameplates), then credit when that GUID goes
+-- dead — even after deselection — plus combat chat / XP lines when present.
+function CF.foreverCreditKill(guid, name)
+    name = plainString(name)
+    if not name then
+        return
+    end
+    local now = unixNow()
+    if type(world.foreverRecentKills) ~= "table" then
+        world.foreverRecentKills = {}
+    end
+    if guid then
+        local untilAt = world.foreverRecentKills[guid]
+        if untilAt and untilAt > now then
+            return
+        end
+        world.foreverRecentKills[guid] = now + 4
+    end
+    world.killSecret = false
+    world.killName = name
+    world.deathName = name
+    witnessGroupKills(name)
+    onWorld()
+    world.killName = nil
+    world.killSecret = false
+    world.deathName = nil
+end
+
+function CF.foreverNoteUnit(unit)
+    if type(unit) ~= "string" or unit == "" or not UnitExists or not UnitGUID then
+        return
+    end
+    local okExists, exists = pcall(UnitExists, unit)
+    if not okExists or not exists then
+        return
+    end
+    if UnitIsDead then
+        local okDead, dead = pcall(UnitIsDead, unit)
+        if okDead and dead then
+            return
+        end
+    end
+    if UnitCanAttack then
+        local okAtk, atk = pcall(UnitCanAttack, "player", unit)
+        if not okAtk or not atk then
+            return
+        end
+    end
+    local okGuid, guid = pcall(UnitGUID, unit)
+    guid = okGuid and plainString(guid) or nil
+    if not guid then
+        return
+    end
+    local name = npcName(unit)
+    if not name then
+        return
+    end
+    if type(world.foreverEngaged) ~= "table" then
+        world.foreverEngaged = {}
+    end
+    world.foreverEngaged[guid] = { name = name, until = unixNow() + 60 }
+end
+
+function CF.foreverCheckUnitDead(unit)
+    if type(unit) ~= "string" or unit == "" or not UnitExists or not UnitGUID or not UnitIsDead then
+        return
+    end
+    local okExists, exists = pcall(UnitExists, unit)
+    if not okExists or not exists then
+        return
+    end
+    local okGuid, guid = pcall(UnitGUID, unit)
+    guid = okGuid and plainString(guid) or nil
+    if not guid or type(world.foreverEngaged) ~= "table" then
+        return
+    end
+    local info = world.foreverEngaged[guid]
+    if type(info) ~= "table" then
+        return
+    end
+    local okDead, dead = pcall(UnitIsDead, unit)
+    if not okDead or not dead then
+        return
+    end
+    world.foreverEngaged[guid] = nil
+    CF.foreverCreditKill(guid, info.name or npcName(unit))
+end
+
+function CF.foreverPollKills()
+    if not UnitExists or not UnitGUID then
+        return
+    end
+    -- Remember only units we actually look at (not every nameplate).
+    CF.foreverNoteUnit("target")
+    CF.foreverNoteUnit("mouseover")
+    CF.foreverNoteUnit("focus")
+    if type(world.foreverEngaged) == "table" then
+        local now = unixNow()
+        for guid, info in pairs(world.foreverEngaged) do
+            if type(info) ~= "table" or (tonumber(info.until) or 0) < now then
+                world.foreverEngaged[guid] = nil
+            end
+        end
+    end
+    -- Nameplates still reveal the corpse after deselection.
+    CF.foreverCheckUnitDead("target")
+    CF.foreverCheckUnitDead("mouseover")
+    CF.foreverCheckUnitDead("focus")
+    local i
+    for i = 1, 40 do
+        CF.foreverCheckUnitDead("nameplate" .. i)
+    end
+end
+
+function CF.foreverCombatChatKill(msg)
+    msg = plainString(msg)
+    if not msg then
+        return
+    end
+    local name = msg:match("^[Yy]ou have slain (.+)!$")
+        or msg:match("^(.+) dies, you gain")
+        or msg:match("%((.+) dies%)")
+        or msg:match("^[Dd]u har drept (.+)!$")
+        or msg:match("^(.+) dør, du får")
+    name = plainString(name)
+    if not name then
+        return
+    end
+    CF.foreverCreditKill(nil, name)
 end
 
 local function noteInteractUnit(unit)
@@ -5287,13 +5535,23 @@ events:RegisterEvent("TRAINER_CLOSED")
 events:RegisterEvent("PLAYER_TARGET_CHANGED")
 events:RegisterEvent("BAG_UPDATE")
 events:RegisterEvent("GET_ITEM_INFO_RECEIVED")
-events:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+-- Forever forbids RegisterEvent(CLEU); Classic/retail keep combat-log kills.
+-- Forever kill fallback: combat chat / XP lines (nameplates cover the rest).
+if CF.forever() then
+    events:RegisterEvent("CHAT_MSG_COMBAT_HOSTILE_DEATH")
+    events:RegisterEvent("CHAT_MSG_COMBAT_XP_GAIN")
+else
+    events:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+end
 events:SetScript("OnUpdate", function(_, elapsed)
     -- File load is during /reload, before the player exists. onWorld from
     -- here was calling classic map APIs and tripping Forever's blocked-action
     -- dialog with no click. Wait until PLAYER_ENTERING_WORLD sets CF.live.
     if not CF.live then
         return
+    end
+    if CF.forever() then
+        CF.foreverPollKills()
     end
     if SagaloreBoard.pendingRefresh then
         SagaloreBoard.pendingRefresh = false
@@ -5333,7 +5591,7 @@ events:SetScript("OnEvent", function(_, event, ...)
         -- Forever gamepad UI runs right after /reload. Building our frame then
         -- (UIDropDownMenu / CharacterFrame tabs / UISpecialFrames) taints that
         -- path and pops ADDON_ACTION_FORBIDDEN with no player click. Minimap
-        -- only at login; full UI on first open.
+        -- only at login; full UI on first open. Never register CLEU on Forever.
         if CF.forever() then
             ensureMinimapButton()
         else
@@ -5456,6 +5714,12 @@ events:SetScript("OnEvent", function(_, event, ...)
                     world.deathName = nil
                 end
             end
+        end
+        return
+    end
+    if event == "CHAT_MSG_COMBAT_HOSTILE_DEATH" or event == "CHAT_MSG_COMBAT_XP_GAIN" then
+        if CF.forever() then
+            CF.foreverCombatChatKill(...)
         end
         return
     end
