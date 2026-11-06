@@ -4249,12 +4249,12 @@ local function ensureMinimapButton()
         end
         return
     end
-    -- Forever: do not parent to Minimap (gamepad taint). Prefer MinimapCluster
-    -- when present so we sit with the minimap chrome; else UIParent.
+    -- Forever: never parent to Minimap (gamepad taint) or MinimapCluster
+    -- (cluster is often hidden under the official gamepad UI, which made our
+    -- button "exist" in SV while staying invisible). Parent UIParent; still
+    -- position relative to the map frames when they exist.
     local parent = UIParent
-    if CF.forever() then
-        parent = (MinimapCluster and MinimapCluster) or UIParent
-    elseif Minimap then
+    if not CF.forever() and Minimap then
         parent = Minimap
     end
     if not parent then
@@ -4403,6 +4403,9 @@ local function ensureMinimapButton()
         end
     end)
     updateMinimapUnread()
+    if type(CF.noteDebug) == "function" then
+        CF.noteDebug("minimap_button")
+    end
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227Sagalore|r: minimap button ready - click the gold emblem by the map")
     end
@@ -4412,7 +4415,10 @@ end
 -- IconTexture alone lists us; without this click does nothing — and Forever
 -- also disables /sagalore, so the compartment is the other launcher.
 function Sagalore_OnAddonCompartmentClick()
-    toggle()
+    local ok, err = pcall(toggle)
+    if not ok then
+        chat("|cffc9a227Sagalore|r: open failed — " .. tostring(err))
+    end
 end
 
 build = function()
@@ -5699,6 +5705,11 @@ events:SetScript("OnEvent", function(_, event, ...)
                 C_Timer.After(3, function()
                     ensureMinimapButton()
                 end)
+            end
+            if type(CF.noteDebug) == "function" then
+                CF.noteDebug("forever_login_ui", {
+                    btn = minimapBtn and true or false,
+                })
             end
         else
             build()
