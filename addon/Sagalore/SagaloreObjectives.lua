@@ -369,10 +369,10 @@ local function minutes(s)
     return h * 60 + m
 end
 
-local function inWindow(hour, min, startAt, endAt)
+local function withinWindow(hour, min, startAt, stopAt)
     hour, min = tonumber(hour), tonumber(min)
     local cur = hour and min and (hour * 60 + min) or nil
-    local a, b = minutes(startAt), minutes(endAt)
+    local a, b = minutes(startAt), minutes(stopAt)
     if not cur or not a or not b then
         return false
     end
@@ -398,7 +398,7 @@ function M.timeOpen(when, state)
         return false
     end
     if type(when.start) == "string" and when.start ~= "" then
-        if not inWindow(now.hour, now.min, when.start, when["end"]) then
+        if not withinWindow(now.hour, now.min, when.start, when["end"]) then
             return false
         end
     end
@@ -485,14 +485,14 @@ function M.timeHint(when, state, done)
     local unix = nowUnixForHint(when, state)
     if not done and unix then
         local startAt = type(when.starts_at) == "string" and when.starts_at ~= "" and parseRFC3339(when.starts_at) or nil
-        local endAt = type(when.ends_at) == "string" and when.ends_at ~= "" and parseRFC3339(when.ends_at) or nil
+        local stopAt = type(when.ends_at) == "string" and when.ends_at ~= "" and parseRFC3339(when.ends_at) or nil
         if startAt and unix < startAt then
             bits[#bits + 1] = "in " .. formatSpan(startAt - unix)
-        elseif endAt then
-            if unix > endAt then
+        elseif stopAt then
+            if unix > stopAt then
                 bits[#bits + 1] = "expired"
             else
-                bits[#bits + 1] = "in " .. formatSpan(endAt - unix)
+                bits[#bits + 1] = "in " .. formatSpan(stopAt - unix)
             end
         end
     elseif not done then
