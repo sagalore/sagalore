@@ -128,6 +128,51 @@ func TestAddonPaths(t *testing.T) {
 	}
 }
 
+func TestListFlavorsIncludesSiblingsFromEraPath(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "World of Warcraft")
+	era := filepath.Join(parent, "_classic_era_")
+	forever := filepath.Join(parent, "_forever_")
+	for _, p := range []string{era, forever} {
+		if err := os.MkdirAll(filepath.Join(p, "Interface", "AddOns"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := ListFlavors(era)
+	if len(got) != 2 {
+		t.Fatalf("got %#v", got)
+	}
+	byClient := map[string]string{}
+	for _, f := range got {
+		byClient[f.Client] = f.Path
+	}
+	if byClient["forever"] != forever || byClient["classic_era"] != era {
+		t.Fatalf("%#v", byClient)
+	}
+	if InstallRoot(era) != parent {
+		t.Fatalf("root %s", InstallRoot(era))
+	}
+	all, err := DetectAll(era, nil)
+	if err != nil || len(all) != 2 {
+		t.Fatalf("DetectAll %#v %v", all, err)
+	}
+}
+
+func TestListFlavorsStandaloneForever(t *testing.T) {
+	root := t.TempDir()
+	forever := filepath.Join(root, "World of Warcraft Forever")
+	if err := os.MkdirAll(filepath.Join(forever, "Interface", "AddOns"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := ListFlavors(forever)
+	if len(got) != 1 || got[0].Path != forever || got[0].Client != "forever" {
+		t.Fatalf("%#v", got)
+	}
+	if InstallRoot(forever) != forever {
+		t.Fatalf("root %s", InstallRoot(forever))
+	}
+}
+
 func contains(list []string, want string) bool {
 	for _, v := range list {
 		if v == want {
