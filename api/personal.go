@@ -24,7 +24,7 @@ func (s *Store) EnsurePersonalGroup(ctx context.Context, playerID string) error 
 		SELECT id::text FROM groups
 		WHERE personal AND owner_player_id=$1`, playerID).Scan(&existing)
 	if err == nil {
-		if err := s.autoIncludePersonalCharacters(ctx, playerID, existing); err != nil {
+		if err := s.autoIncludePersonalCharacters(ctx, existing); err != nil {
 			return err
 		}
 		if err := s.upgradePersonalStartersV2(ctx, existing); err != nil {
@@ -62,10 +62,6 @@ func (s *Store) EnsurePersonalGroup(ctx context.Context, playerID string) error 
 		INSERT INTO group_members (group_id, player_id, role) VALUES ($1,$2,'owner')`, groupID, playerID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE characters SET participating = true WHERE player_id=$1`, playerID); err != nil {
-		return err
-	}
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
@@ -78,7 +74,7 @@ func (s *Store) EnsurePersonalGroup(ctx context.Context, playerID string) error 
 			return err
 		}
 	}
-	if err := s.autoIncludePersonalCharacters(ctx, playerID, groupID); err != nil {
+	if err := s.autoIncludePersonalCharacters(ctx, groupID); err != nil {
 		return err
 	}
 	return nil
@@ -135,21 +131,15 @@ func (s *Store) ensurePersonalStarterCovers(ctx context.Context, groupID string)
 	return nil
 }
 
-// autoIncludePersonalCharacters marks every character on the account as
-// participating and clears leftover Personal include-invites. Personal is
-// account-scoped; there is no opt-in dialog.
-func (s *Store) autoIncludePersonalCharacters(ctx context.Context, playerID, groupID string) error {
-	if _, err := s.pool.Exec(ctx, `
-		UPDATE characters SET participating=true, updated_at=now()
-		WHERE player_id=$1 AND participating=false`, playerID); err != nil {
-		return err
-	}
-	if _, err := s.pool.Exec(ctx, `
+// autoIncludePersonalCharacters clears leftover Personal include-invites.
+// Personal is account-scoped, so there is no opt-in dialog. participating
+// stays false: that flag is the friend-group include prompt ("Include Magni
+// in Gutar?"), and Sync sets Personal up before it creates those invites.
+func (s *Store) autoIncludePersonalCharacters(ctx context.Context, groupID string) error {
+	_, err := s.pool.Exec(ctx, `
 		UPDATE group_invites SET status='accepted'
-		WHERE group_id=$1::uuid AND status='pending'`, groupID); err != nil {
-		return err
-	}
-	return nil
+		WHERE group_id=$1::uuid AND status='pending'`, groupID)
+	return err
 }
 
 func personalSlug(playerID string) string {
