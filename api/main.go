@@ -163,6 +163,7 @@ func serve(args []string) int {
 		store:            store,
 		adminToken:       os.Getenv("ADMIN_TOKEN"),
 		publicBaseURL:    publicBase,
+		siteURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("SAGALORE_SITE_URL")), "/"),
 		imageURLSecret:   imageSecret,
 		imageURLTTL:      imageTTL,
 		webhooks:         q,

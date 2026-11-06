@@ -2,7 +2,7 @@
 
 ## Join group links
 
-Owners can mint time-limited shareable join URLs (`open` or `gated`) via `POST /v1/groups/{id}/join-links`. Redeem is `POST /v1/join/{token}` (JSON) or the thin browser page at `/join/{token}` (Battle.net sign-in + character checkboxes from companion sync). Gated requests need owner approve/reject. Personal groups stay link-free. See [docs/API.md](docs/API.md).
+Owners can mint time-limited shareable join URLs (`open` or `gated`) via `POST /v1/groups/{id}/join-links`. Redeem is `POST /v1/join/{token}` (JSON) or the thin browser page at `/join/{token}` (Battle.net sign-in + character checkboxes from companion sync). After join (and on empty roster) the page links **Install Sagalore** to `SAGALORE_SITE_URL` (default `https://sagalore.app`). Gated requests need owner approve/reject. Personal groups stay link-free. See [docs/API.md](docs/API.md).
 
 ## Open-source cleanup
 

@@ -65,6 +65,23 @@ const joinPageCSSExtra = `
     font-size: 0.92rem;
   }
   .flash.err { color: #f0b0a8; }
+  .hint {
+    margin: 0.85rem 0 0;
+    text-align: center;
+    color: rgba(220, 213, 200, 0.72);
+    font-size: 0.85rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  }
+  /* Longer label than Allow/Join — keep btn-allow.png aspect so the
+     beveled face stays tall enough for "Install Sagalore". */
+  a.btn.install {
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    min-width: 14.5rem;
+    height: 3.5rem;
+    padding: 0.1rem 2.6rem 0;
+  }
 `
 
 type joinPageView struct {
@@ -74,9 +91,12 @@ type joinPageView struct {
 	Who         string
 	Token       string
 	LoginURL    string
+	InstallURL  string
 	Message     string
 	Error       string
 	Done        bool
+	Joined      bool
+	Pending     bool
 	NeedLogin   bool
 	EmptyRoster bool
 	Characters  []joinCharView
@@ -267,20 +287,28 @@ func (s *Server) joinPagePost(w http.ResponseWriter, r *http.Request) {
 		s.renderJoinPage(w, view)
 		return
 	}
-	msg := "You are in. Open the companion and play."
-	if out.Status == "pending" {
+	joined := out.Status == "approved"
+	pending := out.Status == "pending"
+	msg := "You are in."
+	if pending {
 		msg = "Request sent. An owner will review it."
 	}
 	s.renderJoinPage(w, joinPageView{
-		Title:     "Join " + out.GroupName,
-		GroupName: out.GroupName,
-		Message:   msg,
-		Done:      true,
-		Who:       player.BattleTag,
+		Title:      "Join " + out.GroupName,
+		GroupName:  out.GroupName,
+		Message:    msg,
+		InstallURL: s.installURL(),
+		Done:       true,
+		Joined:     joined,
+		Pending:    pending,
+		Who:        player.BattleTag,
 	})
 }
 
 func (s *Server) renderJoinPage(w http.ResponseWriter, view joinPageView) {
+	if view.InstallURL == "" {
+		view.InstallURL = s.installURL()
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "same-origin")
@@ -306,8 +334,12 @@ var joinTmpl = template.Must(template.New("join").Parse(`<!doctype html>
     <div class="divider" aria-hidden="true"><span class="line"></span><span class="gem"></span><span class="line"></span></div>
     {{if .Error}}<p class="flash err">{{.Error}}</p>{{end}}
     {{if .Message}}<p class="flash">{{.Message}}</p>{{end}}
-    {{if not .Done}}
-      {{if .NeedLogin}}
+    {{if .Done}}
+      {{if or .Joined .Pending}}
+        <p class="body">{{if .Joined}}Download Sagalore, sign in, and jump in-game.{{else}}While you wait, install Sagalore so you are ready when they approve.{{end}}</p>
+        <div class="actions"><a class="btn allow install" href="{{.InstallURL}}">Install Sagalore</a></div>
+      {{end}}
+    {{else if .NeedLogin}}
         <p class="lead">Sign in with Battle.net to choose which characters join <strong>{{.GroupName}}</strong>.</p>
         {{if eq .Mode "gated"}}<p class="body">This link asks an owner to approve new members.</p>{{else}}<p class="body">This link lets you join immediately.</p>{{end}}
         <div class="actions">
@@ -315,11 +347,12 @@ var joinTmpl = template.Must(template.New("join").Parse(`<!doctype html>
             <button class="allow" type="submit">Sign in</button>
           </form>
         </div>
-      {{else if .EmptyRoster}}
+    {{else if .EmptyRoster}}
         <div class="who"><strong>Signed in as</strong><span class="tag">{{.Who}}</span></div>
         <p class="lead">No characters yet.</p>
-        <p class="body">Install the Sagalore companion, log in there, and play once so your characters sync. Then reload this page.</p>
-      {{else}}
+        <p class="body">Install Sagalore, then log into World of Warcraft with Sagalore active at least once so your characters show up here. Reload this page after.</p>
+        <div class="actions"><a class="btn allow install" href="{{.InstallURL}}">Install Sagalore</a></div>
+    {{else}}
         <div class="who"><strong>Signed in as</strong><span class="tag">{{.Who}}</span></div>
         <p class="lead">Choose characters for <strong>{{.GroupName}}</strong>.</p>
         {{if eq .Mode "gated"}}<p class="body">An owner will confirm before they are added.</p>{{end}}
@@ -329,11 +362,11 @@ var joinTmpl = template.Must(template.New("join").Parse(`<!doctype html>
             <li><label><input type="checkbox" name="character_id" value="{{.ID}}"> {{.Label}}</label></li>
             {{end}}
           </ul>
+          <p class="hint">Don't see your character? Log in with that character while Sagalore is active, then reload this page.</p>
           <div class="actions">
             <button class="allow" type="submit">{{if eq .Mode "gated"}}Request join{{else}}Join{{end}}</button>
           </div>
         </form>
-      {{end}}
     {{end}}
 ` + oauthChromeClose + `
 </body>

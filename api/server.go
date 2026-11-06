@@ -23,6 +23,7 @@ type Server struct {
 	store            *Store
 	adminToken       string
 	publicBaseURL    string
+	siteURL          string
 	imageURLSecret   string
 	imageURLTTL      time.Duration
 	webhooks         *webhook.Queue
@@ -31,6 +32,15 @@ type Server struct {
 	bnetClientID     string
 	bnetClientSecret string
 	bnet             *bnetFlow
+}
+
+const defaultSiteURL = "https://sagalore.app"
+
+func (s *Server) installURL() string {
+	if u := strings.TrimRight(strings.TrimSpace(s.siteURL), "/"); u != "" {
+		return u
+	}
+	return defaultSiteURL
 }
 
 type ctxKey int

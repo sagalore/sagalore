@@ -321,8 +321,8 @@ func TestE2EClickJoinLinkHTMLOpen(t *testing.T) {
 		t.Fatalf("post html %d", posted.StatusCode)
 	}
 	page = string(postBody)
-	if !strings.Contains(page, "You are in") {
-		t.Fatalf("expected success copy:\n%s", page)
+	if !strings.Contains(page, "You are in") || !strings.Contains(page, "Install Sagalore") || !strings.Contains(page, "https://sagalore.app") {
+		t.Fatalf("expected success + install CTA:\n%s", page)
 	}
 
 	inGroup, part := participatingInGroup(t, chars[0].ID, f.group.ID)
@@ -377,8 +377,8 @@ func TestE2EClickJoinLinkHTMLGated(t *testing.T) {
 	postBody, _ := io.ReadAll(posted.Body)
 	posted.Body.Close()
 	page = string(postBody)
-	if !strings.Contains(page, "Request sent") {
-		t.Fatalf("expected pending copy:\n%s", page)
+	if !strings.Contains(page, "Request sent") || !strings.Contains(page, "Install Sagalore") {
+		t.Fatalf("expected pending + install CTA:\n%s", page)
 	}
 	inGroup, _ := participatingInGroup(t, chars[0].ID, f.group.ID)
 	if inGroup {
@@ -421,8 +421,8 @@ func TestE2EClickJoinLinkHTMLEmptyRoster(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	page := string(body)
-	if !strings.Contains(page, "No characters yet") || !strings.Contains(page, "companion") {
-		t.Fatalf("expected empty-roster guidance:\n%s", page)
+	if !strings.Contains(page, "No characters yet") || !strings.Contains(page, "Install Sagalore") || !strings.Contains(page, "Sagalore active") {
+		t.Fatalf("expected empty-roster install CTA:\n%s", page)
 	}
 }
 

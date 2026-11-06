@@ -71,6 +71,7 @@ Shareable alternative to naming a character. Targeted invites (`POST …/invites
 - **gated** — same selection creates a join request; the owner must approve.
 - Characters come from companion sync, not Blizzard’s profile API. If the roster is empty, run the companion once, then reload `/join/…`.
 - Marketing / Discord can deep-link to `{PUBLIC_BASE_URL}/join/{token}`. MCP wrappers and website polish live outside this repo.
+- After join (or while a gated request is pending), the page offers **Install Sagalore** → `SAGALORE_SITE_URL` (default `https://sagalore.app`).
 
 ## Sagas
 

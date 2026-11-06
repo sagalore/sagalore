@@ -248,10 +248,11 @@ const oauthPageCSS = `
     font: normal 1.12rem/1 var(--serif);
     letter-spacing: 0.05em;
     text-decoration: none;
-    width: 10.25rem;
+    width: auto;
+    min-width: 10.25rem;
     height: 2.5rem;
     /* Top pad optically centers label on the beveled gold face. */
-    padding: 0.22rem 0.5rem 0;
+    padding: 0.22rem 0.85rem 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -299,9 +300,10 @@ const oauthPageCSS = `
     .lead, .body, .return { padding: 0 0.15rem; }
     .actions { gap: 0.55rem; }
     button, .btn {
-      width: 9.25rem;
+      min-width: 9.25rem;
       height: 2.35rem;
       font-size: 1.02rem;
+      padding: 0.22rem 0.75rem 0;
     }
   }
 `
