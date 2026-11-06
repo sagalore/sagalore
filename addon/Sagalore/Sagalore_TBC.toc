@@ -2,7 +2,7 @@
 ## Title: Sagalore
 ## Notes: Shared sagas for your group. Requires the Sagalore companion from sagalore.app.
 ## Author: Sagalore
-## Version: 0.4.2
+## Version: 0.4.3
 ## SavedVariablesPerCharacter: SagaloreDB
 ## IconTexture: Interface\AddOns\Sagalore\SagaloreList
 ## AddonCompartmentFunc: Sagalore_OnAddonCompartmentClick
