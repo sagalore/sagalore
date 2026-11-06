@@ -5200,7 +5200,7 @@ function CF.foreverNoteUnit(unit)
     if type(world.foreverEngaged) ~= "table" then
         world.foreverEngaged = {}
     end
-    world.foreverEngaged[guid] = { name = name, until = unixNow() + 60 }
+    world.foreverEngaged[guid] = { name = name, untilAt = unixNow() + 60 }
 end
 
 function CF.foreverCheckUnitDead(unit)
@@ -5239,7 +5239,7 @@ function CF.foreverPollKills()
     if type(world.foreverEngaged) == "table" then
         local now = unixNow()
         for guid, info in pairs(world.foreverEngaged) do
-            if type(info) ~= "table" or (tonumber(info.until) or 0) < now then
+            if type(info) ~= "table" or (tonumber(info.untilAt) or 0) < now then
                 world.foreverEngaged[guid] = nil
             end
         end
