@@ -37,8 +37,8 @@ func TestEnsurePersonalGroupOnSync(t *testing.T) {
 	}
 	var participating bool
 	if err := testPool.QueryRow(context.Background(), `
-		SELECT participating FROM characters WHERE player_id=$1 AND name='Magni'`, player.ID).Scan(&participating); err != nil || !participating {
-		t.Fatalf("participating=%v err=%v", participating, err)
+		SELECT participating FROM characters WHERE player_id=$1 AND name='Magni'`, player.ID).Scan(&participating); err != nil || participating {
+		t.Fatalf("personal sync must not opt the character into friend groups, participating=%v err=%v", participating, err)
 	}
 
 	resp, err = api.do(http.MethodGet, "/v1/sync", nil, &sync)
@@ -118,8 +118,8 @@ func TestPersonalAutoIncludesWithoutPrompt(t *testing.T) {
 	}
 	var participating bool
 	if err := testPool.QueryRow(context.Background(), `
-		SELECT participating FROM characters WHERE player_id=$1 AND name='Magni'`, player.ID).Scan(&participating); err != nil || !participating {
-		t.Fatalf("participating=%v err=%v", participating, err)
+		SELECT participating FROM characters WHERE player_id=$1 AND name='Magni'`, player.ID).Scan(&participating); err != nil || participating {
+		t.Fatalf("clearing a personal invite must not set participating, participating=%v err=%v", participating, err)
 	}
 }
 
@@ -270,5 +270,41 @@ func TestSyncPreloadsPendingJoinSagas(t *testing.T) {
 	}
 	if len(sync.Groups) < 2 {
 		t.Fatalf("want personal+gutar, got %+v", sync.Groups)
+	}
+}
+
+func TestFriendIncludeAfterPersonalSync(t *testing.T) {
+	resetDB(t)
+	srv := httptest.NewServer((&Server{store: NewStore(testPool)}).Handler())
+	t.Cleanup(srv.Close)
+	player, token := devSession(t, "bnet-magni", "magnusnilsen#2977", "magnusnilsen")
+	devGroup(t, player.ID, "gutar", "Gutar")
+	store := NewStore(testPool)
+	if _, err := store.UpsertCharacter(context.Background(), player.ID, contract.CharacterUpsert{
+		Name: "Magni", Realm: "Deepforge", Level: 1, BattleTag: "magnusnilsen#2977",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	api := apiClient{base: srv.URL, token: token, http: srv.Client()}
+	var sync contract.SyncResponse
+	resp, err := api.do(http.MethodGet, "/v1/sync", nil, &sync)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("sync %d %v", statusOf(resp), err)
+	}
+	var include *contract.Invite
+	for i := range sync.Invites {
+		inv := &sync.Invites[i]
+		if inv.Name == "Magni" && inv.Realm == "Deepforge" && inv.GroupName == "Gutar" && inv.Kind == "include" {
+			include = inv
+		}
+	}
+	if include == nil {
+		t.Fatalf("want Gutar include invite, got %+v", sync.Invites)
+	}
+	var participating bool
+	if err := testPool.QueryRow(context.Background(), `
+		SELECT participating FROM characters WHERE player_id=$1 AND name='Magni' AND realm='Deepforge'`,
+		player.ID).Scan(&participating); err != nil || participating {
+		t.Fatalf("participating=%v err=%v", participating, err)
 	}
 }
