@@ -4301,8 +4301,8 @@ local function ensureMinimapButton()
     border:SetSize(66, 66)
     border:SetPoint("TOPLEFT")
     border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    local function shownFrame(frame)
-        return frame and frame.IsShown and frame:IsShown()
+    local function frameVisible(widget)
+        return widget and widget.IsShown and widget:IsShown()
     end
     local function placeMinimap(self)
         local angle = self.angle or (math.pi * 0.75)
@@ -4310,9 +4310,9 @@ local function ensureMinimapButton()
         -- gamepad cluster. Anchoring to that hidden frame parks the button
         -- off-screen. Only orbit a map that is actually shown.
         local anchor = nil
-        if shownFrame(Minimap) then
+        if frameVisible(Minimap) then
             anchor = Minimap
-        elseif not CF.forever() and shownFrame(MinimapCluster) then
+        elseif not CF.forever() and frameVisible(MinimapCluster) then
             anchor = MinimapCluster
         end
         self:ClearAllPoints()
@@ -4342,7 +4342,7 @@ local function ensureMinimapButton()
             tries = tries + 1
             placeMinimap(btn)
             updateMinimapUnread()
-            if shownFrame(Minimap) and tries >= 2 then
+            if frameVisible(Minimap) and tries >= 2 then
                 return
             end
             if tries > 40 then
