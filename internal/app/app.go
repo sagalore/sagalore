@@ -37,9 +37,10 @@ type App struct {
 	Client     *backend.Client
 	Queue      *queue.Queue
 	Flavors    []wowpath.Flavor // every install that gets the addon and sync
-	NoUpdate   bool
-	UpdateDir  string // tests; empty uses the config directory
-	Prompt     func() (string, error)
+	NoUpdate     bool
+	UpdateDir    string         // tests; empty uses the config directory
+	UpdateClient *update.Client // tests; nil uses GitHub with Update.Token
+	Prompt       func() (string, error)
 	sync       contract.SyncResponse
 	player     contract.Player
 	follows    []follower // chat logs, same order as Flavors
@@ -740,7 +741,34 @@ func (a *App) maybeUpdate(ctx context.Context) {
 	if repo == "" {
 		return
 	}
-	a.offerUpdate(ctx, &update.Client{Token: a.Config.Update.Token}, repo, version.Version)
+	a.offerUpdate(ctx, a.updateClient(), repo, version.Version)
+}
+
+// CheckUpdate looks for a newer GitHub release and stages it when found.
+// Unlike the background timer, this ignores the Automatic updates preference
+// so the tray "Check for updates" / "Update now" path always works.
+// ready is true when a newer build is staged (including one already pending).
+func (a *App) CheckUpdate(ctx context.Context) (tag string, ready bool) {
+	if pending := a.PendingUpdate(); pending != "" {
+		return pending, true
+	}
+	if a.NoUpdate || containsDev(version.Version) {
+		return "", false
+	}
+	repo := strings.TrimSpace(a.Config.Update.Repo)
+	if repo == "" {
+		return "", false
+	}
+	a.offerUpdate(ctx, a.updateClient(), repo, version.Version)
+	tag = a.PendingUpdate()
+	return tag, tag != ""
+}
+
+func (a *App) updateClient() *update.Client {
+	if a.UpdateClient != nil {
+		return a.UpdateClient
+	}
+	return &update.Client{Token: a.Config.Update.Token}
 }
 
 // offerUpdate downloads a newer release into the pending directory and asks

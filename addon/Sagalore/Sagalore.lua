@@ -2090,7 +2090,7 @@ local function noteTalkName(name)
     if not s then
         return
     end
-    world.pendingTalk = { name = s, untilAt = unixNow() + 5 }
+    world.pendingTalk = { name = s, expiresAt = unixNow() + 5 }
 end
 
 local function readNPC()
@@ -2163,7 +2163,7 @@ local function objectiveState(entries)
     end
     local emote, emoteTarget, emoteText, emoteZone, emoteSub, emoteMini, emoteMap, emoteX, emoteY
     local pending = world.pendingEmote
-    if type(pending) == "table" and (tonumber(pending.untilAt) or 0) >= unixNow() then
+    if type(pending) == "table" and (tonumber(pending.expiresAt) or 0) >= unixNow() then
         emote = pending.token
         emoteTarget = pending.target
         emoteText = pending.text
@@ -2177,7 +2177,7 @@ local function objectiveState(entries)
     local talkName = world.npc
     local pendingTalk = world.pendingTalk
     if (not talkName or talkName == "") and type(pendingTalk) == "table"
-        and (tonumber(pendingTalk.untilAt) or 0) >= unixNow() then
+        and (tonumber(pendingTalk.expiresAt) or 0) >= unixNow() then
         talkName = pendingTalk.name
     end
     return {
@@ -4241,12 +4241,20 @@ end
 
 local function ensureMinimapButton()
     if minimapBtn then
+        if minimapBtn.placeMinimap then
+            minimapBtn:placeMinimap()
+        end
+        if minimapBtn.Show then
+            minimapBtn:Show()
+        end
         return
     end
-    -- Forever: do not parent to Minimap (gamepad taint). Anchor to Minimap
-    -- from UIParent instead — same place as Classic, without a Minimap child.
+    -- Forever: do not parent to Minimap (gamepad taint). Prefer MinimapCluster
+    -- when present so we sit with the minimap chrome; else UIParent.
     local parent = UIParent
-    if not CF.forever() and Minimap then
+    if CF.forever() then
+        parent = (MinimapCluster and MinimapCluster) or UIParent
+    elseif Minimap then
         parent = Minimap
     end
     if not parent then
@@ -4256,8 +4264,17 @@ local function ensureMinimapButton()
     minimapBtn = btn
     -- Larger hit/visual size so the emblem is not crushed into ~20px.
     btn:SetSize(40, 40)
-    btn:SetFrameStrata("MEDIUM")
-    btn:SetFrameLevel(parent:GetFrameLevel() + 8)
+    -- HIGH so Forever's MinimapCluster chrome does not cover the button.
+    btn:SetFrameStrata("HIGH")
+    if btn.SetFixedFrameStrata then
+        pcall(btn.SetFixedFrameStrata, btn, true)
+    end
+    btn:SetFrameLevel((parent.GetFrameLevel and parent:GetFrameLevel() or 0) + 50)
+    if btn.SetFixedFrameLevel then
+        pcall(btn.SetFixedFrameLevel, btn, true)
+    end
+    btn:EnableMouse(true)
+    btn:SetAlpha(1)
     btn:RegisterForClicks("AnyUp")
     btn.angle = math.pi * 0.75
     if type(SagaloreDB) == "table" and type(SagaloreDB.minimapAngle) == "number" then
@@ -4279,18 +4296,52 @@ local function ensureMinimapButton()
     icon:SetSize(30, 30)
     icon:SetPoint("TOPLEFT", 6, -5)
     icon:SetTexture("Interface\\AddOns\\Sagalore\\SagaloreMinimap")
+    btn.icon = icon
     local border = btn:CreateTexture(nil, "OVERLAY")
     border:SetSize(66, 66)
     border:SetPoint("TOPLEFT")
     border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     local function placeMinimap(self)
         local angle = self.angle or (math.pi * 0.75)
-        local anchor = Minimap or UIParent
-        local radius = ((anchor.GetWidth and anchor:GetWidth()) or 140) / 2 + 8
+        local anchor = Minimap or MinimapCluster
         self:ClearAllPoints()
-        self:SetPoint("CENTER", anchor, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+        if anchor then
+            local radius = 78
+            if anchor.GetWidth then
+                local w = anchor:GetWidth()
+                if type(w) == "number" and w > 0 then
+                    radius = w / 2 + 8
+                end
+            end
+            self:SetPoint("CENTER", anchor, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
+        else
+            -- Last resort: top-right of the screen so we are never "nowhere".
+            self:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -24, -24)
+        end
+        self:SetAlpha(1)
+        self:Show()
+        if self.EnableMouse then
+            self:EnableMouse(true)
+        end
     end
+    btn.placeMinimap = placeMinimap
     placeMinimap(btn)
+    if C_Timer and C_Timer.After then
+        local tries = 0
+        local function retry()
+            tries = tries + 1
+            placeMinimap(btn)
+            updateMinimapUnread()
+            if (Minimap or MinimapCluster) and tries >= 2 then
+                return
+            end
+            if tries > 40 then
+                return
+            end
+            C_Timer.After(0.25, retry)
+        end
+        C_Timer.After(0.25, retry)
+    end
     -- Only treat as a drag if the angle actually changed. Forever can fire
     -- OnDragStart on a plain click; marking moved there swallowed OnClick.
     btn:RegisterForDrag("LeftButton")
@@ -4312,8 +4363,12 @@ local function ensureMinimapButton()
         if not self.dragging then
             return
         end
-        local mx, my = Minimap:GetCenter()
-        local scale = Minimap:GetEffectiveScale()
+        local anchor = Minimap or MinimapCluster
+        if not anchor or not anchor.GetCenter then
+            return
+        end
+        local mx, my = anchor:GetCenter()
+        local scale = anchor:GetEffectiveScale()
         if not mx or not scale or scale == 0 then
             return
         end
@@ -4348,6 +4403,16 @@ local function ensureMinimapButton()
         end
     end)
     updateMinimapUnread()
+    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227Sagalore|r: minimap button ready - click the gold emblem by the map")
+    end
+end
+
+-- Forever / retail Addon Compartment (the "Addons" number on the minimap).
+-- IconTexture alone lists us; without this click does nothing — and Forever
+-- also disables /sagalore, so the compartment is the other launcher.
+function Sagalore_OnAddonCompartmentClick()
+    toggle()
 end
 
 build = function()
@@ -5153,7 +5218,7 @@ local function noteEmote(token, unit, msg)
         mapID = world.mapID,
         x = world.x,
         y = world.y,
-        untilAt = unixNow() + 5,
+        expiresAt = unixNow() + 5,
     }
 end
 
@@ -5185,8 +5250,8 @@ function CF.foreverCreditKill(guid, name)
         world.foreverRecentKills = {}
     end
     if guid then
-        local untilAt = world.foreverRecentKills[guid]
-        if untilAt and untilAt > now then
+        local expiresAt = world.foreverRecentKills[guid]
+        if expiresAt and expiresAt > now then
             return
         end
         world.foreverRecentKills[guid] = now + 4
@@ -5233,7 +5298,7 @@ function CF.foreverNoteUnit(unit)
     if type(world.foreverEngaged) ~= "table" then
         world.foreverEngaged = {}
     end
-    world.foreverEngaged[guid] = { name = name, untilAt = unixNow() + 60 }
+    world.foreverEngaged[guid] = { name = name, expiresAt = unixNow() + 60 }
 end
 
 function CF.foreverCheckUnitDead(unit)
@@ -5272,7 +5337,7 @@ function CF.foreverPollKills()
     if type(world.foreverEngaged) == "table" then
         local now = unixNow()
         for guid, info in pairs(world.foreverEngaged) do
-            if type(info) ~= "table" or (tonumber(info.untilAt) or 0) < now then
+            if type(info) ~= "table" or (tonumber(info.expiresAt) or 0) < now then
                 world.foreverEngaged[guid] = nil
             end
         end
@@ -5626,6 +5691,15 @@ events:SetScript("OnEvent", function(_, event, ...)
         -- only at login; full UI on first open. Never register CLEU on Forever.
         if CF.forever() then
             ensureMinimapButton()
+            -- Forever builds the minimap cluster late; place again shortly after.
+            if C_Timer and C_Timer.After then
+                C_Timer.After(1, function()
+                    ensureMinimapButton()
+                end)
+                C_Timer.After(3, function()
+                    ensureMinimapButton()
+                end)
+            end
         else
             build()
         end
@@ -5776,7 +5850,7 @@ events:SetScript("OnEvent", function(_, event, ...)
             lastDoEmoteToken = nil
             onWorld()
         elseif type(world.pendingEmote) == "table" then
-            world.pendingEmote.untilAt = unixNow() + 5
+            world.pendingEmote.expiresAt = unixNow() + 5
             onWorld()
         end
         return

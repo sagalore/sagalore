@@ -226,7 +226,7 @@ func run(opts options) int {
 		if trayMenu != nil {
 			refreshUpdate(trayMenu, application, log)
 		}
-		_ = notify.Show("Sagalore", "New version "+tag+" — restart to update")
+		_ = notify.Show("Sagalore", "Update ready — "+tag+". Choose Update now in the tray.")
 	}
 	if isTerminal(os.Stdin) {
 		application.Prompt = func() (string, error) {
@@ -309,14 +309,21 @@ func refreshUpdate(m *tray.Menu, application *app.App, log *slog.Logger) {
 		}
 	})
 	tag := application.PendingUpdate()
-	if tag == "" {
-		m.SetPendingUpdate("", nil)
-		return
-	}
-	m.SetPendingUpdate(tag, func() {
+	m.SetUpdateAction(tag, func() {
+		go func() {
+			newTag, ready := application.CheckUpdate(context.Background())
+			refreshUpdate(m, application, log)
+			if ready {
+				_ = notify.Show("Sagalore", "Update ready — "+newTag)
+				return
+			}
+			_ = notify.Show("Sagalore", "You're on the latest ("+version.Version+")")
+		}()
+	}, func() {
 		go func() {
 			if err := application.ApplyUpdate(); err != nil {
 				log.Warn("oppdatering feilet", "err", err)
+				_ = notify.Show("Sagalore", "Update failed. Try downloading from GitHub Releases.")
 			}
 		}()
 	})

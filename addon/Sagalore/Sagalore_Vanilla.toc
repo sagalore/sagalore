@@ -5,6 +5,7 @@
 ## Version: 0.1.0
 ## SavedVariablesPerCharacter: SagaloreDB
 ## IconTexture: Interface\AddOns\Sagalore\SagaloreList
+## AddonCompartmentFunc: Sagalore_OnAddonCompartmentClick
 
 Locales/enUS.lua
 Locales/nbNO.lua

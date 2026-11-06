@@ -38,9 +38,9 @@ function M.snoozed(db, id, now)
     if type(db) ~= "table" or type(db.invite_snooze) ~= "table" then
         return false
     end
-    local untilAt = tonumber(db.invite_snooze[id])
+    local expiresAt = tonumber(db.invite_snooze[id])
     local at = tonumber(now) or 0
-    return untilAt ~= nil and untilAt > at
+    return expiresAt ~= nil and expiresAt > at
 end
 
 -- markAnswered hides an invite locally after Accept/Decline so the next one can show

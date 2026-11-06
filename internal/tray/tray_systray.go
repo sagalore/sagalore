@@ -52,8 +52,7 @@ func Run(ctx context.Context, tooltip string, items []Item, onReady func(*Menu))
 		}
 		systray.AddSeparator()
 
-		m.updateItem = systray.AddMenuItem("New version — restart", "Download is ready")
-		m.updateItem.Hide()
+		m.updateItem = systray.AddMenuItem("Check for updates", "Look for a newer Sagalore on GitHub")
 		go func() {
 			for range m.updateItem.ClickedCh {
 				m.mu.Lock()
@@ -134,22 +133,34 @@ func addDisabled(title, tip string) *systray.MenuItem {
 	return it
 }
 
-// SetPendingUpdate shows or hides the restart-to-update item.
-func (m *Menu) SetPendingUpdate(tag string, onRestart func()) {
+// SetUpdateAction wires the update menu item.
+// With an empty tag it is "Check for updates" (onCheck). With a staged release
+// it becomes "Update now — <tag>" (onApply).
+func (m *Menu) SetUpdateAction(tag string, onCheck, onApply func()) {
 	if m == nil || m.updateItem == nil {
 		return
 	}
 	m.mu.Lock()
-	m.updateClick = onRestart
+	if tag == "" {
+		m.updateClick = onCheck
+	} else {
+		m.updateClick = onApply
+	}
 	m.mu.Unlock()
 	if tag == "" {
-		m.updateItem.Hide()
+		m.updateItem.SetTitle("Check for updates")
+		m.updateItem.SetTooltip("Look for a newer Sagalore on GitHub")
+		m.updateItem.Show()
 		return
 	}
-	title := "New version " + tag + " — restart"
-	m.updateItem.SetTitle(title)
-	m.updateItem.SetTooltip("Download is ready. Restart Sagalore to update")
+	m.updateItem.SetTitle("Update now — " + tag)
+	m.updateItem.SetTooltip("Install " + tag + " and restart Sagalore")
 	m.updateItem.Show()
+}
+
+// SetPendingUpdate keeps older call sites working; prefer SetUpdateAction.
+func (m *Menu) SetPendingUpdate(tag string, onRestart func()) {
+	m.SetUpdateAction(tag, nil, onRestart)
 }
 
 // SetAutoUpdate sets the checkbox and the toggle handler.
