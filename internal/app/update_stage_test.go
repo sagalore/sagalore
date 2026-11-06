@@ -14,6 +14,7 @@ import (
 
 	"github.com/sagalore/sagalore/internal/config"
 	"github.com/sagalore/sagalore/internal/update"
+	"github.com/sagalore/sagalore/internal/version"
 )
 
 func discardLog() *slog.Logger {
@@ -70,5 +71,41 @@ func TestMaybeUpdateSkipsWhenDisabled(t *testing.T) {
 	a.maybeUpdate(context.Background())
 	if a.PendingUpdate() != "" {
 		t.Fatal(a.PendingUpdate())
+	}
+}
+
+func TestCheckUpdateIgnoresDisabledPreference(t *testing.T) {
+	name := update.AssetName(runtime.GOOS, runtime.GOARCH)
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/repos/sagalore/sagalore/releases/latest":
+			fmt.Fprintf(w, `{"tag_name":"v9.9.9","assets":[{"name":%q,"url":%q}]}`, name, srv.URL+"/bin")
+		case r.URL.Path == "/bin":
+			_, _ = w.Write([]byte("new-binary"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	prev := version.Version
+	version.Version = "0.1.0"
+	t.Cleanup(func() { version.Version = prev })
+
+	a := &App{
+		Config:       config.Config{Update: config.Update{Repo: config.DefaultUpdateRepo}},
+		Log:          discardLog(),
+		UpdateDir:    t.TempDir(),
+		UpdateClient: &update.Client{APIBase: srv.URL},
+	}
+	a.Config.Update.SetEnabled(false)
+	a.maybeUpdate(context.Background())
+	if a.PendingUpdate() != "" {
+		t.Fatal("automatic path should stay quiet when disabled")
+	}
+	tag, ready := a.CheckUpdate(context.Background())
+	if !ready || tag != "v9.9.9" {
+		t.Fatalf("ready=%v tag=%q", ready, tag)
 	}
 }
