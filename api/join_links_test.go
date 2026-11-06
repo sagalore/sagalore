@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/sagalore/sagalore/internal/contract"
+	"github.com/sagalore/sagalore/internal/webhook"
 )
 
 // Local e2e coverage for join links as they stand today:
@@ -25,22 +26,29 @@ type joinFixture struct {
 	owner      contract.Player
 	ownerAPI   apiClient
 	group      contract.GroupSummary
+	hooks      *webhookSink
 }
 
 func newJoinFixture(t *testing.T) *joinFixture {
 	t.Helper()
 	resetDB(t)
 	store := NewStore(testPool)
+	sink := newWebhookSink(t)
 	srv := httptest.NewServer((&Server{
 		store:         store,
 		publicBaseURL: "https://api.example.test",
+		webhooks:      sink.queue,
 	}).Handler())
 	t.Cleanup(srv.Close)
 	owner, ownerToken := devSession(t, "bnet-owner", "Owner#1", "Owner")
+	group := devGroup(t, owner.ID, "tutorial", "Tutorial")
+	if err := store.SetGroupWebhook(context.Background(), owner.ID, group.ID, sink.url); err != nil {
+		t.Fatal(err)
+	}
 	return &joinFixture{
-		t: t, srv: srv, store: store, owner: owner,
+		t: t, srv: srv, store: store, owner: owner, hooks: sink,
 		ownerAPI: apiClient{base: srv.URL, token: ownerToken, http: srv.Client()},
-		group:    devGroup(t, owner.ID, "tutorial", "Tutorial"),
+		group:    group,
 	}
 }
 
@@ -175,6 +183,11 @@ func TestE2EOpenJoinAddsSelectedCharacter(t *testing.T) {
 	if !inGroup || part {
 		t.Fatalf("unchecked alt must stay non-participating inGroup=%v participating=%v", inGroup, part)
 	}
+
+	ev := f.hooks.waitType(t, webhook.TypeJoinJoined)
+	if ev.Join == nil || ev.Join.Mode != "open" || ev.Join.Status != "approved" || len(ev.Characters) != 1 || ev.Characters[0].Name != "Magni" {
+		t.Fatalf("join.joined webhook %+v", ev)
+	}
 }
 
 func TestE2EGatedApproveAddsCharacter(t *testing.T) {
@@ -194,6 +207,10 @@ func TestE2EGatedApproveAddsCharacter(t *testing.T) {
 	inGroup, _ := participatingInGroup(t, chars[0].ID, f.group.ID)
 	if inGroup {
 		t.Fatal("gated redeem must not join before approve")
+	}
+	requested := f.hooks.waitType(t, webhook.TypeJoinRequested)
+	if requested.Join == nil || requested.Join.Mode != "gated" || requested.Join.ID != pending.ID {
+		t.Fatalf("join.requested webhook %+v", requested)
 	}
 
 	var listed struct {
@@ -216,6 +233,10 @@ func TestE2EGatedApproveAddsCharacter(t *testing.T) {
 	inGroup, part := participatingInGroup(t, chars[0].ID, f.group.ID)
 	if !inGroup || !part {
 		t.Fatalf("after approve inGroup=%v participating=%v", inGroup, part)
+	}
+	approvedEv := f.hooks.waitType(t, webhook.TypeJoinApproved)
+	if approvedEv.Join == nil || approvedEv.Join.Status != "approved" || approvedEv.Join.ID != pending.ID {
+		t.Fatalf("join.approved webhook %+v", approvedEv)
 	}
 }
 
@@ -242,6 +263,10 @@ func TestE2EGatedRejectLeavesOut(t *testing.T) {
 	inGroup, part := participatingInGroup(t, chars[0].ID, f.group.ID)
 	if inGroup || part {
 		t.Fatalf("rejected must stay out inGroup=%v participating=%v", inGroup, part)
+	}
+	rejectedEv := f.hooks.waitType(t, webhook.TypeJoinRejected)
+	if rejectedEv.Join == nil || rejectedEv.Join.Status != "rejected" || rejectedEv.Join.ID != pending.ID {
+		t.Fatalf("join.rejected webhook %+v", rejectedEv)
 	}
 
 	resp, err = f.ownerAPI.do(http.MethodPost, "/v1/groups/"+f.group.ID+"/join-requests/"+pending.ID+"/approve", map[string]any{}, nil)

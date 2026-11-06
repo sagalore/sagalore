@@ -326,11 +326,15 @@ func (s *Store) RedeemJoinLink(ctx context.Context, playerID, token string, char
 		if err := tx.Commit(ctx); err != nil {
 			return contract.JoinRequest{}, err
 		}
-		return contract.JoinRequest{
+		out := contract.JoinRequest{
 			LinkID: row.ID, GroupID: row.GroupID, GroupName: row.GroupName,
-			PlayerID: playerID, Status: "approved", CharacterIDs: dedupeIDs(characterIDs),
+			PlayerID: playerID, Status: "approved", Mode: "open", CharacterIDs: dedupeIDs(characterIDs),
 			CreatedAt: contract.FormatTime(time.Now().UTC()),
-		}, nil
+		}
+		_ = s.pool.QueryRow(ctx, `
+			SELECT COALESCE(battletag, ''), display_name FROM players WHERE id=$1`, playerID).Scan(
+			&out.BattleTag, &out.DisplayName)
+		return out, nil
 	}
 
 	var existingID, existingStatus string
@@ -353,7 +357,12 @@ func (s *Store) RedeemJoinLink(ctx context.Context, playerID, token string, char
 		if err := tx.Commit(ctx); err != nil {
 			return contract.JoinRequest{}, err
 		}
-		return s.GetJoinRequest(ctx, existingID)
+		out, err := s.GetJoinRequest(ctx, existingID)
+		if err != nil {
+			return contract.JoinRequest{}, err
+		}
+		out.Mode = "gated"
+		return out, nil
 	}
 
 	var reqID string
@@ -378,6 +387,7 @@ func (s *Store) RedeemJoinLink(ctx context.Context, playerID, token string, char
 	if err != nil {
 		return contract.JoinRequest{}, err
 	}
+	out.Mode = "gated"
 	return out, nil
 }
 
@@ -587,7 +597,12 @@ func (s *Store) AnswerJoinRequest(ctx context.Context, ownerID, groupID, request
 	if err := tx.Commit(ctx); err != nil {
 		return contract.JoinRequest{}, err
 	}
-	return s.GetJoinRequest(ctx, requestID)
+	out, err := s.GetJoinRequest(ctx, requestID)
+	if err != nil {
+		return contract.JoinRequest{}, err
+	}
+	out.Mode = "gated"
+	return out, nil
 }
 
 func (s *Server) createJoinLink(w http.ResponseWriter, r *http.Request) {
@@ -652,6 +667,7 @@ func (s *Server) approveJoinRequest(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.announceJoin(r.Context(), out.Mode, out, out.BattleTag)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -661,6 +677,7 @@ func (s *Server) rejectJoinRequest(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.announceJoin(r.Context(), out.Mode, out, out.BattleTag)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -685,11 +702,13 @@ func (s *Server) redeemJoinByToken(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
 		return
 	}
-	out, err := s.store.RedeemJoinLink(r.Context(), playerFrom(r).ID, r.PathValue("token"), body.CharacterIDs)
+	player := playerFrom(r)
+	out, err := s.store.RedeemJoinLink(r.Context(), player.ID, r.PathValue("token"), body.CharacterIDs)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	s.announceJoin(r.Context(), out.Mode, out, player.BattleTag)
 	writeJSON(w, http.StatusOK, out)
 }
 

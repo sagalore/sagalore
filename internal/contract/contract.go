@@ -237,6 +237,7 @@ type JoinRequest struct {
 	BattleTag    string   `json:"battletag,omitempty"`
 	DisplayName  string   `json:"display_name,omitempty"`
 	Status       string   `json:"status"`
+	Mode         string   `json:"mode,omitempty"` // open | gated (set on redeem / answers)
 	CharacterIDs []string `json:"character_ids"`
 	CreatedAt    string   `json:"created_at"`
 }

@@ -6,11 +6,15 @@ import "time"
 
 // Event types delivered to a group's webhook URL.
 const (
-	TypeSagaCreated     = "saga.created"
-	TypeSagaUpdated     = "saga.updated"
-	TypeSagaRetired     = "saga.retired"
-	TypeSagaCompleted   = "saga.completed"
-	TypeInviteAccepted  = "invite.accepted"
+	TypeSagaCreated    = "saga.created"
+	TypeSagaUpdated    = "saga.updated"
+	TypeSagaRetired    = "saga.retired"
+	TypeSagaCompleted  = "saga.completed"
+	TypeInviteAccepted = "invite.accepted"
+	TypeJoinJoined     = "join.joined"    // open join link redeemed
+	TypeJoinRequested  = "join.requested" // gated request submitted
+	TypeJoinApproved   = "join.approved"  // gated request approved
+	TypeJoinRejected   = "join.rejected"  // gated request rejected
 )
 
 // Event is the JSON body POSTed to a group webhook.
@@ -20,8 +24,10 @@ type Event struct {
 	Group      GroupRef   `json:"group"`
 	Saga       *SagaRef   `json:"saga,omitempty"`
 	Invite     *InviteRef `json:"invite,omitempty"`
+	Join       *JoinRef   `json:"join,omitempty"`
 	Actor      *ActorRef  `json:"actor,omitempty"`
 	Character  *CharRef   `json:"character,omitempty"`
+	Characters []CharRef  `json:"characters,omitempty"`
 	Changes    []string   `json:"changes,omitempty"`
 }
 
@@ -44,6 +50,14 @@ type SagaRef struct {
 // InviteRef is set on invite.accepted.
 type InviteRef struct {
 	ID string `json:"id"`
+}
+
+// JoinRef is set on join.* events from shareable join links.
+type JoinRef struct {
+	ID     string `json:"id,omitempty"` // request id (gated); empty for open joins
+	LinkID string `json:"link_id,omitempty"`
+	Mode   string `json:"mode,omitempty"`   // open | gated
+	Status string `json:"status,omitempty"` // pending | approved | rejected
 }
 
 // ActorRef is who caused the event when known (BattleTag name, display name, …).
