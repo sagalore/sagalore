@@ -4264,8 +4264,8 @@ local function ensureMinimapButton()
     minimapBtn = btn
     -- Larger hit/visual size so the emblem is not crushed into ~20px.
     btn:SetSize(40, 40)
-    -- HIGH so Forever's MinimapCluster chrome does not cover the button.
-    btn:SetFrameStrata("HIGH")
+    -- DIALOG on Forever so the gamepad map chrome cannot cover the emblem.
+    btn:SetFrameStrata(CF.forever() and "DIALOG" or "HIGH")
     if btn.SetFixedFrameStrata then
         pcall(btn.SetFixedFrameStrata, btn, true)
     end
@@ -4301,9 +4301,20 @@ local function ensureMinimapButton()
     border:SetSize(66, 66)
     border:SetPoint("TOPLEFT")
     border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    local function frameVisible(widget)
+        return widget and widget.IsShown and widget:IsShown()
+    end
     local function placeMinimap(self)
         local angle = self.angle or (math.pi * 0.75)
-        local anchor = Minimap or MinimapCluster
+        -- Forever's Minimap frame often exists while the visible map is the
+        -- gamepad cluster. Anchoring to that hidden frame parks the button
+        -- off-screen. Only orbit a map that is actually shown.
+        local anchor = nil
+        if frameVisible(Minimap) then
+            anchor = Minimap
+        elseif not CF.forever() and frameVisible(MinimapCluster) then
+            anchor = MinimapCluster
+        end
         self:ClearAllPoints()
         if anchor then
             local radius = 78
@@ -4315,8 +4326,7 @@ local function ensureMinimapButton()
             end
             self:SetPoint("CENTER", anchor, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
         else
-            -- Last resort: top-right of the screen so we are never "nowhere".
-            self:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -24, -24)
+            self:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -24, -80)
         end
         self:SetAlpha(1)
         self:Show()
@@ -4332,7 +4342,7 @@ local function ensureMinimapButton()
             tries = tries + 1
             placeMinimap(btn)
             updateMinimapUnread()
-            if (Minimap or MinimapCluster) and tries >= 2 then
+            if frameVisible(Minimap) and tries >= 2 then
                 return
             end
             if tries > 40 then
@@ -5641,8 +5651,11 @@ events:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 -- Forever forbids RegisterEvent(CLEU); Classic/retail keep combat-log kills.
 -- Forever kill fallback: combat chat / XP lines (nameplates cover the rest).
 if CF.forever() then
-    events:RegisterEvent("CHAT_MSG_COMBAT_HOSTILE_DEATH")
-    events:RegisterEvent("CHAT_MSG_COMBAT_XP_GAIN")
+    -- Forever 1.60 has neither of these. A bare RegisterEvent throws and
+    -- aborts the rest of this file, so OnEvent never attaches and the
+    -- minimap button is never created.
+    pcall(events.RegisterEvent, events, "CHAT_MSG_COMBAT_HOSTILE_DEATH")
+    pcall(events.RegisterEvent, events, "CHAT_MSG_COMBAT_XP_GAIN")
 else
     events:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 end
