@@ -43,7 +43,7 @@ On bootstrap, `SAGALORE_BOOTSTRAP_WEBHOOK_URL` is copied once onto the bootstrap
 | `join.approved` | An owner approves a gated join request |
 | `join.rejected` | An owner rejects a gated join request |
 
-Delivery is asynchronous. Completions set `webhook_posted` on the progress row after a successful POST.
+Delivery is asynchronous on a single worker. Completions set `webhook_posted` on the progress row after a successful POST. The client retries HTTP `429` and `5xx` (and transport errors) with backoff, honouring `Retry-After` when present, and spaces deliveries by about 750ms so a burst of saga creates is less likely to trip Discord or Smia rate limits.
 
 ## Payload
 
