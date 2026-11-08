@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -534,12 +535,40 @@ func (s *Store) RemoveMember(ctx context.Context, actorID, groupID, memberID str
 }
 
 func (s *Store) SetGroupWebhook(ctx context.Context, playerID, groupID, webhook string) error {
+	return s.SetGroupWebhookMeta(ctx, playerID, groupID, webhook, nil)
+}
+
+// SetGroupWebhookMeta sets the outbound URL and optional opaque meta JSON.
+// meta nil leaves webhook_meta unchanged; non-nil replaces it (use {} to clear).
+func (s *Store) SetGroupWebhookMeta(ctx context.Context, playerID, groupID, webhook string, meta json.RawMessage) error {
 	if err := s.requireOwner(ctx, playerID, groupID); err != nil {
 		return err
 	}
 	webhook = strings.TrimSpace(webhook)
 	if webhook != "" && !strings.HasPrefix(webhook, "https://") && !strings.HasPrefix(webhook, "http://") {
 		return fmt.Errorf("%w: webhook url must be http(s)", ErrInvalid)
+	}
+	if meta != nil {
+		if len(meta) == 0 {
+			meta = json.RawMessage(`{}`)
+		}
+		if !json.Valid(meta) {
+			return fmt.Errorf("%w: webhook meta", ErrInvalid)
+		}
+		var probe any
+		if err := json.Unmarshal(meta, &probe); err != nil {
+			return fmt.Errorf("%w: webhook meta", ErrInvalid)
+		}
+		if _, ok := probe.(map[string]any); !ok && string(meta) != "null" {
+			return fmt.Errorf("%w: webhook meta must be a JSON object", ErrInvalid)
+		}
+		if string(meta) == "null" {
+			meta = json.RawMessage(`{}`)
+		}
+		_, err := s.pool.Exec(ctx, `
+			UPDATE groups SET webhook_url=$2, webhook_meta=$3::jsonb, webhook_sourced=true WHERE id=$1`,
+			groupID, webhook, string(meta))
+		return err
 	}
 	_, err := s.pool.Exec(ctx, `
 		UPDATE groups SET webhook_url=$2, webhook_sourced=true WHERE id=$1`, groupID, webhook)
@@ -588,26 +617,36 @@ func (s *Store) SetParticipating(ctx context.Context, playerID, characterID stri
 	return s.GetCharacter(ctx, characterID)
 }
 
-func (s *Store) GroupWebhookForQuest(ctx context.Context, questID string) (url string, group webhook.GroupRef, err error) {
+func (s *Store) GroupWebhookForQuest(ctx context.Context, questID string) (url string, group webhook.GroupRef, meta json.RawMessage, err error) {
+	var metaRaw []byte
 	err = s.pool.QueryRow(ctx, `
-		SELECT COALESCE(g.webhook_url, ''), COALESCE(g.id::text, ''), COALESCE(g.slug, ''), COALESCE(g.name, '')
+		SELECT COALESCE(g.webhook_url, ''), COALESCE(g.id::text, ''), COALESCE(g.slug, ''), COALESCE(g.name, ''),
+			COALESCE(g.webhook_meta, '{}'::jsonb)
 		FROM quests q
 		LEFT JOIN groups g ON g.id = q.group_id
-		WHERE q.id=$1`, questID).Scan(&url, &group.ID, &group.Slug, &group.Name)
+		WHERE q.id=$1`, questID).Scan(&url, &group.ID, &group.Slug, &group.Name, &metaRaw)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", webhook.GroupRef{}, nil
+		return "", webhook.GroupRef{}, nil, nil
 	}
-	return url, group, err
+	return url, group, normalizeWebhookMeta(metaRaw), err
 }
 
-func (s *Store) GroupWebhook(ctx context.Context, groupID string) (url string, group webhook.GroupRef, err error) {
+func (s *Store) GroupWebhook(ctx context.Context, groupID string) (url string, group webhook.GroupRef, meta json.RawMessage, err error) {
+	var metaRaw []byte
 	err = s.pool.QueryRow(ctx, `
-		SELECT COALESCE(webhook_url, ''), id::text, slug, name
-		FROM groups WHERE id=$1`, groupID).Scan(&url, &group.ID, &group.Slug, &group.Name)
+		SELECT COALESCE(webhook_url, ''), id::text, slug, name, COALESCE(webhook_meta, '{}'::jsonb)
+		FROM groups WHERE id=$1`, groupID).Scan(&url, &group.ID, &group.Slug, &group.Name, &metaRaw)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", webhook.GroupRef{}, ErrNotFound
+		return "", webhook.GroupRef{}, nil, ErrNotFound
 	}
-	return url, group, err
+	return url, group, normalizeWebhookMeta(metaRaw), err
+}
+
+func normalizeWebhookMeta(raw []byte) json.RawMessage {
+	if len(raw) == 0 || string(raw) == "null" || string(raw) == "{}" {
+		return nil
+	}
+	return json.RawMessage(raw)
 }
 
 func (s *Store) MintPersonalToken(ctx context.Context, playerID, label string) (contract.PersonalToken, error) {
@@ -905,15 +944,46 @@ func (s *Server) removeMember(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) getGroupWebhook(w http.ResponseWriter, r *http.Request) {
+	p := playerFrom(r)
+	groupID := r.PathValue("id")
+	if err := s.store.requireOwner(r.Context(), p.ID, groupID); err != nil {
+		s.fail(w, err)
+		return
+	}
+	url, _, meta, err := s.store.GroupWebhook(r.Context(), groupID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	out := map[string]any{
+		"url":        url,
+		"configured": strings.TrimSpace(url) != "",
+		"meta":       map[string]any{},
+	}
+	if meta != nil {
+		var parsed any
+		if err := json.Unmarshal(meta, &parsed); err == nil {
+			out["meta"] = parsed
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) putGroupWebhook(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		URL string `json:"url"`
+		URL  string          `json:"url"`
+		Meta json.RawMessage `json:"meta"`
 	}
 	if err := readJSON(r, &body, 1<<16); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
 		return
 	}
-	if err := s.store.SetGroupWebhook(r.Context(), playerFrom(r).ID, r.PathValue("id"), body.URL); err != nil {
+	var meta json.RawMessage
+	if body.Meta != nil {
+		meta = body.Meta
+	}
+	if err := s.store.SetGroupWebhookMeta(r.Context(), playerFrom(r).ID, r.PathValue("id"), body.URL, meta); err != nil {
 		s.fail(w, err)
 		return
 	}

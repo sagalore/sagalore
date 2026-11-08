@@ -2,7 +2,12 @@
 // Payloads are host-agnostic; Discord formatting belongs outside this repo.
 package webhook
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/sagalore/sagalore/internal/contract"
+)
 
 // Event types delivered to a group's webhook URL.
 const (
@@ -19,16 +24,18 @@ const (
 
 // Event is the JSON body POSTed to a group webhook.
 type Event struct {
-	Type       string     `json:"type"`
-	OccurredAt time.Time  `json:"occurred_at"`
-	Group      GroupRef   `json:"group"`
-	Saga       *SagaRef   `json:"saga,omitempty"`
-	Invite     *InviteRef `json:"invite,omitempty"`
-	Join       *JoinRef   `json:"join,omitempty"`
-	Actor      *ActorRef  `json:"actor,omitempty"`
-	Character  *CharRef   `json:"character,omitempty"`
-	Characters []CharRef  `json:"characters,omitempty"`
-	Changes    []string   `json:"changes,omitempty"`
+	Type       string          `json:"type"`
+	OccurredAt time.Time       `json:"occurred_at"`
+	Group      GroupRef        `json:"group"`
+	Saga       *SagaRef        `json:"saga,omitempty"`
+	Invite     *InviteRef      `json:"invite,omitempty"`
+	Join       *JoinRef        `json:"join,omitempty"`
+	Actor      *ActorRef       `json:"actor,omitempty"`
+	Character  *CharRef        `json:"character,omitempty"`
+	Characters []CharRef       `json:"characters,omitempty"`
+	Changes    []string        `json:"changes,omitempty"`
+	// Meta is opaque group webhook_meta (receiver-defined). Omitted when empty.
+	Meta json.RawMessage `json:"meta,omitempty"`
 }
 
 // GroupRef identifies the group that owns the webhook.
@@ -39,12 +46,18 @@ type GroupRef struct {
 }
 
 // SagaRef is the saga involved in a saga.* event.
+// Objectives and ImageURL are included when known so integrators can render
+// a full card without a follow-up API call. ImageURL is a signed public cover
+// URL when the API is configured for signed images; omit when there is no cover.
+// Character.Realm is the Classic realm name, or the Forever surname.
 type SagaRef struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Version     int    `json:"version"`
-	Description string `json:"description,omitempty"`
-	Active      bool   `json:"active"`
+	ID          string               `json:"id"`
+	Title       string               `json:"title"`
+	Version     int                  `json:"version"`
+	Description string               `json:"description,omitempty"`
+	Active      bool                 `json:"active"`
+	Objectives  []contract.Objective `json:"objectives,omitempty"`
+	ImageURL    string               `json:"image_url,omitempty"`
 }
 
 // InviteRef is set on invite.accepted.

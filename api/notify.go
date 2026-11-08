@@ -17,7 +17,7 @@ func (s *Server) announceCreated(ctx context.Context, q contract.Quest, flag *bo
 	if !announceCreate(flag, q.Active) || s.webhooks == nil {
 		return
 	}
-	url, group, ok := s.groupWebhookForQuest(ctx, q.ID)
+	url, group, meta, ok := s.groupWebhookForQuest(ctx, q.ID)
 	if !ok {
 		return
 	}
@@ -25,8 +25,9 @@ func (s *Server) announceCreated(ctx context.Context, q contract.Quest, flag *bo
 		Type:       webhook.TypeSagaCreated,
 		OccurredAt: time.Now().UTC(),
 		Group:      group,
-		Saga:       sagaRef(q),
+		Saga:       s.sagaRef(q),
 		Actor:      actorRef(q.CreatedBy, ""),
+		Meta:       meta,
 	})
 }
 
@@ -44,7 +45,7 @@ func (s *Server) announceEdited(ctx context.Context, before, after contract.Ques
 	default:
 		return
 	}
-	url, group, ok := s.groupWebhookForQuest(ctx, after.ID)
+	url, group, meta, ok := s.groupWebhookForQuest(ctx, after.ID)
 	if !ok {
 		return
 	}
@@ -56,9 +57,10 @@ func (s *Server) announceEdited(ctx context.Context, before, after contract.Ques
 		Type:       typ,
 		OccurredAt: time.Now().UTC(),
 		Group:      group,
-		Saga:       sagaRef(after),
+		Saga:       s.sagaRef(after),
 		Actor:      actorRef(after.CreatedBy, name),
 		Changes:    changes,
+		Meta:       meta,
 	})
 }
 
@@ -66,7 +68,7 @@ func (s *Server) announceCompleted(ctx context.Context, questID string, res cont
 	if s.webhooks == nil || !res.Completed || res.AlreadyCompleted {
 		return false
 	}
-	url, group, ok := s.groupWebhookForQuest(ctx, questID)
+	url, group, meta, ok := s.groupWebhookForQuest(ctx, questID)
 	if !ok {
 		return false
 	}
@@ -86,10 +88,16 @@ func (s *Server) announceCompleted(ctx context.Context, questID string, res cont
 			Class: strings.TrimSpace(in.Class),
 			Level: in.Level,
 		},
+		Meta: meta,
 	}
 	if detail, err := s.store.GetQuest(ctx, questID); err == nil {
-		ev.Saga.Description = detail.Description
-		ev.Saga.Active = detail.Active
+		ev.Saga = s.sagaRef(detail.Quest)
+		if ev.Saga.Title == "" {
+			ev.Saga.Title = res.QuestTitle
+		}
+		if ev.Saga.Version == 0 {
+			ev.Saga.Version = res.QuestVersion
+		}
 	}
 	return s.webhooks.Enqueue(url, res.ProgressID, ev)
 }
@@ -98,7 +106,7 @@ func (s *Server) announceInviteAccepted(ctx context.Context, inv contract.Invite
 	if s.webhooks == nil || inv.GroupID == "" {
 		return
 	}
-	url, group, ok := s.groupWebhook(ctx, inv.GroupID)
+	url, group, meta, ok := s.groupWebhook(ctx, inv.GroupID)
 	if !ok {
 		return
 	}
@@ -112,6 +120,7 @@ func (s *Server) announceInviteAccepted(ctx context.Context, inv contract.Invite
 		Invite:     &webhook.InviteRef{ID: inv.ID},
 		Character:  &webhook.CharRef{Name: inv.Name, Realm: inv.Realm},
 		Actor:      actorRef(playerBattleTag, displayActor("", "", playerBattleTag)),
+		Meta:       meta,
 	})
 }
 
@@ -134,7 +143,7 @@ func (s *Server) announceJoin(ctx context.Context, mode string, req contract.Joi
 	default:
 		return
 	}
-	url, group, ok := s.groupWebhook(ctx, req.GroupID)
+	url, group, meta, ok := s.groupWebhook(ctx, req.GroupID)
 	if !ok {
 		return
 	}
@@ -162,6 +171,7 @@ func (s *Server) announceJoin(ctx context.Context, mode string, req contract.Joi
 		},
 		Actor:      actorRef(tag, displayActor(req.DisplayName, "", tag)),
 		Characters: chars,
+		Meta:       meta,
 	}
 	if len(chars) == 1 {
 		c := chars[0]
@@ -192,14 +202,19 @@ func (s *Server) charRefs(ctx context.Context, ids []string) []webhook.CharRef {
 	return out
 }
 
-func sagaRef(q contract.Quest) *webhook.SagaRef {
-	return &webhook.SagaRef{
+func (s *Server) sagaRef(q contract.Quest) *webhook.SagaRef {
+	ref := &webhook.SagaRef{
 		ID:          q.ID,
 		Title:       q.Title,
 		Version:     q.Version,
 		Description: q.Description,
 		Active:      q.Active,
+		Objectives:  q.Objectives,
 	}
+	if q.HasImage && s != nil {
+		ref.ImageURL = s.signedSagaImageURL(q.ID, time.Now())
+	}
+	return ref
 }
 
 func actorRef(battleTag, name string) *webhook.ActorRef {
@@ -214,26 +229,26 @@ func actorRef(battleTag, name string) *webhook.ActorRef {
 	return &webhook.ActorRef{Name: name, BattleTag: battleTag}
 }
 
-func (s *Server) groupWebhookForQuest(ctx context.Context, questID string) (url string, group webhook.GroupRef, ok bool) {
+func (s *Server) groupWebhookForQuest(ctx context.Context, questID string) (url string, group webhook.GroupRef, meta json.RawMessage, ok bool) {
 	if s == nil || s.store == nil || questID == "" {
-		return "", webhook.GroupRef{}, false
+		return "", webhook.GroupRef{}, nil, false
 	}
-	hook, g, err := s.store.GroupWebhookForQuest(ctx, questID)
+	hook, g, meta, err := s.store.GroupWebhookForQuest(ctx, questID)
 	if err != nil || strings.TrimSpace(hook) == "" {
-		return "", webhook.GroupRef{}, false
+		return "", webhook.GroupRef{}, nil, false
 	}
-	return hook, g, true
+	return hook, g, meta, true
 }
 
-func (s *Server) groupWebhook(ctx context.Context, groupID string) (url string, group webhook.GroupRef, ok bool) {
+func (s *Server) groupWebhook(ctx context.Context, groupID string) (url string, group webhook.GroupRef, meta json.RawMessage, ok bool) {
 	if s == nil || s.store == nil || groupID == "" {
-		return "", webhook.GroupRef{}, false
+		return "", webhook.GroupRef{}, nil, false
 	}
-	hook, g, err := s.store.GroupWebhook(ctx, groupID)
+	hook, g, meta, err := s.store.GroupWebhook(ctx, groupID)
 	if err != nil || strings.TrimSpace(hook) == "" {
-		return "", webhook.GroupRef{}, false
+		return "", webhook.GroupRef{}, nil, false
 	}
-	return hook, g, true
+	return hook, g, meta, true
 }
 
 // displayActor picks a short name. Prefer a real display name, then BattleTag name.

@@ -288,6 +288,9 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	if completed.Saga == nil || completed.Saga.Title != "Første vakt" {
 		t.Fatalf("webhook %+v", completed)
 	}
+	if len(completed.Saga.Objectives) != 2 {
+		t.Fatalf("completed objectives %+v", completed.Saga.Objectives)
+	}
 	if completed.Character == nil || completed.Character.Name != "Magni" {
 		t.Fatalf("character %+v", completed.Character)
 	}

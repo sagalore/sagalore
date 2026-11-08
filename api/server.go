@@ -111,6 +111,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /join/{token}/dev-login", s.joinPageDevLogin)
 	mux.HandleFunc("POST /v1/groups/{id}/leave", s.withPlayer(s.leaveGroup))
 	mux.HandleFunc("DELETE /v1/groups/{id}/members/{playerID}", s.withMember(s.removeMember))
+	mux.HandleFunc("GET /v1/groups/{id}/webhook", s.withMember(s.getGroupWebhook))
 	mux.HandleFunc("PUT /v1/groups/{id}/webhook", s.withMember(s.putGroupWebhook))
 	mux.HandleFunc("PUT /v1/groups/{id}/locale", s.withMember(s.putGroupLocale))
 	mux.HandleFunc("GET /v1/me/characters", s.withPlayer(s.listMyCharacters))

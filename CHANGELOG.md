@@ -1,5 +1,9 @@
 # Changelog
 
+## Group webhook enrichment
+
+Saga webhook events include structured `objectives` and optional signed `image_url`. Groups may store opaque `webhook_meta` (JSON) via `PUT /v1/groups/{id}/webhook` (`meta`); it is copied onto each event. Owners can `GET /v1/groups/{id}/webhook`. See [docs/webhooks.md](docs/webhooks.md). The Smia Sagalore MCP adds `webhook_guide`, `set_group_webhook`, Discord helpers, and a Discord format relay.
+
 ## Join group links
 
 Owners can mint time-limited shareable join URLs (`open` or `gated`) via `POST /v1/groups/{id}/join-links`. Redeem is `POST /v1/join/{token}` (JSON) or the thin browser page at `/join/{token}` (Battle.net sign-in + character checkboxes from companion sync). After join (and on empty roster) the page links **Install Sagalore** to `SAGALORE_SITE_URL` (default `https://sagalore.app`). Gated requests need owner approve/reject. Personal groups stay link-free. Group webhooks get `join.joined`, `join.requested`, `join.approved`, and `join.rejected`. See [docs/API.md](docs/API.md) and [docs/webhooks.md](docs/webhooks.md).

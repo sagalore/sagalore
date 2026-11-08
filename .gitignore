@@ -7,5 +7,6 @@
 .env
 config.json
 /api/tmp/
+/tmp/
 .DS_Store
 docker-compose.override.yml
