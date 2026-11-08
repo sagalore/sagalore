@@ -1,5 +1,9 @@
 # Changelog
 
+## Webhook delivery retries
+
+Outbound group webhooks retry on HTTP `429`/`5xx` and transport errors (honour `Retry-After`, exponential backoff). Deliveries are spaced ~750ms on a single worker so Discord rate limits are less likely during multi-saga creates. See [docs/webhooks.md](docs/webhooks.md).
+
 ## Group webhook enrichment
 
 Saga webhook events include structured `objectives` and optional signed `image_url`. Groups may store opaque `webhook_meta` (JSON) via `PUT /v1/groups/{id}/webhook` (`meta`); it is copied onto each event. Owners can `GET /v1/groups/{id}/webhook`. See [docs/webhooks.md](docs/webhooks.md). The Smia Sagalore MCP adds `webhook_guide`, `set_group_webhook`, Discord helpers, and a Discord format relay.
