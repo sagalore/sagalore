@@ -1,5 +1,9 @@
 # Changelog
 
+## MCP guide
+
+`cmd/sagalore-mcp` is a stdio MCP server. Every tool description includes an example. `how_it_works` explains the addon, the companion, Battle.net sync, objective types, and `/reload`. `SAGALORE_TOKEN` is a personal token; `SAGALORE_API_URL` defaults to `https://api.sagalore.app`.
+
 ## Webhook delivery retries
 
 Outbound group webhooks retry on HTTP `429`/`5xx` and transport errors (honour `Retry-After`, exponential backoff). Deliveries are spaced ~750ms on a single worker so Discord rate limits are less likely during multi-saga creates. See [docs/webhooks.md](docs/webhooks.md).
