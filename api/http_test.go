@@ -218,16 +218,9 @@ func TestCompletionIdempotentAndQuestVersions(t *testing.T) {
 	other := contract.CreatePlayerResponse{Player: otherPlayer, APIKey: otherToken}
 	var resp *http.Response
 	var err error
-	var magni contract.Character
-	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
-		"player_id": created.Player.ID, "name": "Magni", "realm": "Argent Dawn",
-		"race": "Dwarf", "class": "Paladin", "level": 12,
-	}, &magni)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("character %d %v", resp.StatusCode, err)
-	}
-	var quest contract.Quest
 	author := apiClient{base: srv.URL, token: magnusToken, http: srv.Client()}
+	magni := syncCharacter(t, author, "Magni", "Argent Dawn", "Dwarf", "Paladin", 12)
+	var quest contract.Quest
 	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{
 		"title": "Første vakt", "description": "Stå vakt.",
 		"objectives": []map[string]any{
@@ -487,7 +480,6 @@ func TestGroupSagaCreditsEachCharacter(t *testing.T) {
 	resetDB(t)
 	srv := httptest.NewServer((&Server{store: NewStore(testPool), adminToken: "admin-test"}).Handler())
 	t.Cleanup(srv.Close)
-	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
 
 	magnusPlayer, magnusToken := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
 	otherPlayer, otherToken := devSession(t, "bnet-mira", "Mira#1", "Mira")
@@ -496,23 +488,11 @@ func TestGroupSagaCreditsEachCharacter(t *testing.T) {
 	magnus := contract.CreatePlayerResponse{Player: magnusPlayer, APIKey: magnusToken}
 	other := contract.CreatePlayerResponse{Player: otherPlayer, APIKey: otherToken}
 	author := apiClient{base: srv.URL, token: magnusToken, http: srv.Client()}
+	otherClient := apiClient{base: srv.URL, token: otherToken, http: srv.Client()}
 	var resp *http.Response
 	var err error
-	var magni, mira contract.Character
-	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
-		"player_id": magnus.Player.ID, "name": "Magni", "realm": "Argent Dawn",
-		"race": "Dwarf", "class": "Paladin", "level": 18,
-	}, &magni)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatal(err)
-	}
-	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
-		"player_id": other.Player.ID, "name": "Mira", "realm": "Argent Dawn",
-		"race": "Human", "class": "Mage", "level": 17,
-	}, &mira)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatal(err)
-	}
+	magni := syncCharacter(t, author, "Magni", "Argent Dawn", "Dwarf", "Paladin", 18)
+	mira := syncCharacter(t, otherClient, "Mira", "Argent Dawn", "Human", "Mage", 17)
 
 	var bad contract.ErrorBody
 	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{
@@ -743,6 +723,18 @@ func TestSeedQuests(t *testing.T) {
 			t.Fatalf("%s objectives %+v", q.Title, q.Objectives)
 		}
 	}
+}
+
+func syncCharacter(t *testing.T, c apiClient, name, realm, race, class string, level int) contract.Character {
+	t.Helper()
+	var out contract.Character
+	resp, err := c.do(http.MethodPut, "/v1/characters", contract.CharacterUpsert{
+		Name: name, Realm: realm, Race: race, Class: class, Level: level,
+	}, &out)
+	if err != nil || resp.StatusCode != http.StatusOK || out.ID == "" {
+		t.Fatalf("sync character %s: status %d err %v", name, statusOf(resp), err)
+	}
+	return out
 }
 
 func statusOf(resp *http.Response) int {
