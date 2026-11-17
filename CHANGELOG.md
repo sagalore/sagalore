@@ -1,5 +1,9 @@
 # Changelog
 
+## Character data is sync-only
+
+Admin create, patch, and delete of characters return `403 character_readonly`. Name, realm, race, class, and level are written by the signed-in companion (`PUT /v1/characters` and `POST /v1/level`). The owner may still set `backstory` with `PATCH /v1/characters/{id}`.
+
 ## Protocol handshake
 
 The API, companion, and addon share an integer protocol (`X-Sagalore-Protocol`, advertised on `GET /v1/sync` as `protocol.version` / `min` / `max`). The server accepts the current value and the previous one. A companion below that range gets `426 upgrade_required` and is asked to update, then `/reload`. The addon shows the same update message when saved data is newer than its code, and labels unknown saga steps as needing a newer version.

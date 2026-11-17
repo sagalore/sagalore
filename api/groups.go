@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -601,6 +602,25 @@ func (s *Store) requireOwner(ctx context.Context, playerID, groupID string) erro
 	return nil
 }
 
+func (s *Store) SetBackstory(ctx context.Context, playerID, characterID, backstory string) (contract.Character, error) {
+	if err := validUUID(characterID); err != nil {
+		return contract.Character{}, err
+	}
+	if err := clip(backstory, 8000); err != nil {
+		return contract.Character{}, err
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE characters SET backstory=$3, updated_at=now()
+		WHERE id=$1 AND player_id=$2`, characterID, playerID, backstory)
+	if err != nil {
+		return contract.Character{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return contract.Character{}, ErrNotFound
+	}
+	return s.GetCharacter(ctx, characterID)
+}
+
 func (s *Store) SetParticipating(ctx context.Context, playerID, characterID string, participating bool) (contract.Character, error) {
 	if err := validUUID(characterID); err != nil {
 		return contract.Character{}, err
@@ -1006,18 +1026,54 @@ func (s *Server) putGroupLocale(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) patchCharacterParticipating(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Participating *bool `json:"participating"`
-	}
-	if err := readJSON(r, &body, 1<<16); err != nil {
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<16))
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
 		return
 	}
-	if body.Participating == nil {
-		writeErr(w, http.StatusBadRequest, "invalid", "participating is required")
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
 		return
 	}
-	out, err := s.store.SetParticipating(r.Context(), playerFrom(r).ID, r.PathValue("id"), *body.Participating)
+	for key := range fields {
+		switch key {
+		case "participating", "backstory":
+		default:
+			writeErr(w, http.StatusForbidden, "character_readonly", "Character name, realm, race, class, and level come from Battle.net sync. Only participating and backstory can be changed by the owner.")
+			return
+		}
+	}
+	var body struct {
+		Participating *bool   `json:"participating"`
+		Backstory     *string `json:"backstory"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
+		return
+	}
+	if body.Participating == nil && body.Backstory == nil {
+		writeErr(w, http.StatusBadRequest, "invalid", "participating or backstory is required")
+		return
+	}
+	playerID := playerFrom(r).ID
+	id := r.PathValue("id")
+	if body.Backstory != nil {
+		if _, err := s.store.SetBackstory(r.Context(), playerID, id, *body.Backstory); err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
+	if body.Participating != nil {
+		out, err := s.store.SetParticipating(r.Context(), playerID, id, *body.Participating)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	out, err := s.store.GetCharacter(r.Context(), id)
 	if err != nil {
 		s.fail(w, err)
 		return

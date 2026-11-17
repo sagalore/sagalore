@@ -121,11 +121,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/admin/players", s.withAdmin(s.listPlayers))
 	mux.HandleFunc("DELETE /v1/admin/sagas/{id}", s.withAdmin(s.deleteAdminSaga))
 	mux.HandleFunc("DELETE /v1/admin/groups/{id}", s.withAdmin(s.deleteAdminGroup))
-	mux.HandleFunc("POST /v1/admin/characters", s.withAdmin(s.createCharacter))
+	mux.HandleFunc("POST /v1/admin/characters", s.withAdmin(s.rejectCharacterWrite))
 	mux.HandleFunc("GET /v1/admin/characters", s.withAdmin(s.listCharacters))
 	mux.HandleFunc("GET /v1/admin/characters/{id}", s.withAdmin(s.getCharacter))
-	mux.HandleFunc("PATCH /v1/admin/characters/{id}", s.withAdmin(s.patchCharacter))
-	mux.HandleFunc("DELETE /v1/admin/characters/{id}", s.withAdmin(s.deleteCharacter))
+	mux.HandleFunc("PATCH /v1/admin/characters/{id}", s.withAdmin(s.rejectCharacterWrite))
+	mux.HandleFunc("DELETE /v1/admin/characters/{id}", s.withAdmin(s.rejectCharacterWrite))
 	mux.HandleFunc("POST /v1/admin/sagas", s.rejectAdminWrite)
 	mux.HandleFunc("GET /v1/admin/sagas", s.withAdmin(s.listQuests))
 	mux.HandleFunc("GET /v1/admin/sagas/{id}", s.withAdmin(s.getQuest))
@@ -355,29 +355,8 @@ func (s *Server) listPlayers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"players": out})
 }
 
-func (s *Server) createCharacter(w http.ResponseWriter, r *http.Request) {
-	var body characterBody
-	if err := readJSON(r, &body, 1<<20); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
-		return
-	}
-	level := 0
-	if body.Level != nil {
-		level = *body.Level
-	}
-	backstory := ""
-	if body.Backstory != nil {
-		backstory = *body.Backstory
-	}
-	out, err := s.store.CreateCharacter(r.Context(), CharacterInput{
-		PlayerID: body.PlayerID, BattleTag: body.BattleTag, Name: body.Name, Realm: body.Realm,
-		Race: body.Race, Class: body.Class, Level: level, Backstory: backstory,
-	})
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, out)
+func (s *Server) rejectCharacterWrite(w http.ResponseWriter, r *http.Request) {
+	writeErr(w, http.StatusForbidden, "character_readonly", "Character data comes from Battle.net sync. Name, realm, race, class, and level cannot be edited here.")
 }
 
 func (s *Server) listCharacters(w http.ResponseWriter, r *http.Request) {
@@ -399,31 +378,6 @@ func (s *Server) getCharacter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *Server) patchCharacter(w http.ResponseWriter, r *http.Request) {
-	var body characterBody
-	if err := readJSON(r, &body, 1<<20); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
-		return
-	}
-	out, err := s.store.UpdateCharacter(r.Context(), r.PathValue("id"), CharacterPatch{
-		Name: body.NamePtr, Realm: body.RealmPtr, Race: body.RacePtr, Class: body.ClassPtr,
-		Level: body.Level, Backstory: body.Backstory,
-	})
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *Server) deleteCharacter(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteCharacter(r.Context(), r.PathValue("id")); err != nil {
-		s.fail(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) createQuest(w http.ResponseWriter, r *http.Request) {
@@ -634,83 +588,6 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		slog.Error("request failed", "err", err)
 		writeErr(w, http.StatusInternalServerError, "internal", "internal error")
 	}
-}
-
-type characterBody struct {
-	PlayerID  string  `json:"player_id"`
-	BattleTag string  `json:"battletag"`
-	Name      string  `json:"name"`
-	Realm     string  `json:"realm"`
-	Race      string  `json:"race"`
-	Class     string  `json:"class"`
-	Level     *int    `json:"level"`
-	Backstory *string `json:"backstory"`
-	NamePtr   *string `json:"-"`
-	RealmPtr  *string `json:"-"`
-	RacePtr   *string `json:"-"`
-	ClassPtr  *string `json:"-"`
-}
-
-func (b *characterBody) UnmarshalJSON(data []byte) error {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	assign := func(key string, dst any) error {
-		if v, ok := raw[key]; ok {
-			return json.Unmarshal(v, dst)
-		}
-		return nil
-	}
-	_ = assign("player_id", &b.PlayerID)
-	_ = assign("battletag", &b.BattleTag)
-	if _, ok := raw["name"]; ok {
-		var v string
-		if err := json.Unmarshal(raw["name"], &v); err != nil {
-			return err
-		}
-		b.Name = v
-		b.NamePtr = &v
-	}
-	if _, ok := raw["realm"]; ok {
-		var v string
-		if err := json.Unmarshal(raw["realm"], &v); err != nil {
-			return err
-		}
-		b.Realm = v
-		b.RealmPtr = &v
-	}
-	if _, ok := raw["race"]; ok {
-		var v string
-		if err := json.Unmarshal(raw["race"], &v); err != nil {
-			return err
-		}
-		b.Race = v
-		b.RacePtr = &v
-	}
-	if _, ok := raw["class"]; ok {
-		var v string
-		if err := json.Unmarshal(raw["class"], &v); err != nil {
-			return err
-		}
-		b.Class = v
-		b.ClassPtr = &v
-	}
-	if _, ok := raw["level"]; ok {
-		var v int
-		if err := json.Unmarshal(raw["level"], &v); err != nil {
-			return err
-		}
-		b.Level = &v
-	}
-	if _, ok := raw["backstory"]; ok {
-		var v string
-		if err := json.Unmarshal(raw["backstory"], &v); err != nil {
-			return err
-		}
-		b.Backstory = &v
-	}
-	return nil
 }
 
 type questBody struct {
