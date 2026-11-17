@@ -1,5 +1,9 @@
 # Changelog
 
+## MCP feedback
+
+`submit_feedback` on `cmd/sagalore-mcp` opens a GitHub issue labelled `feedback` using `SAGALORE_GITHUB_TOKEN` (repo `SAGALORE_FEEDBACK_REPO`, default `sagalore/sagalore`). Reports are rate-limited. The issue contains the text the user wrote, not their BattleTag or email, unless they typed those themselves.
+
 ## Webhook delivery retries
 
 Outbound group webhooks retry on HTTP `429`/`5xx` and transport errors (honour `Retry-After`, exponential backoff). Deliveries are spaced ~750ms on a single worker so Discord rate limits are less likely during multi-saga creates. See [docs/webhooks.md](docs/webhooks.md).

@@ -10,7 +10,7 @@ Three parts, on purpose:
 
 1. **The project.** Sagalore is free and open source (MIT). The addon, the companion, and the API are in this repository. Anyone can read the code, run it, and host their own server on any host that runs containers (or a Go binary) and Postgres.
 2. **The official server.** The easiest way to start is the official server at [sagalore.app](https://sagalore.app) / `api.sagalore.app`, which is free to use. Your data is stored there, and you sign in with Battle.net.
-3. **The MCP.** There is an [official MCP](https://app.smia.io/m/sagalore) that lets your AI create sagas. It is built on the open Sagalore API and runs on [Smia](https://smia.io), a platform we also make. The MCP is not in this repo: Sagalore stays independent of any one platform, and the listing is also a way to show people Smia. Want your own MCP? The API is documented — build away. See [docs/API.md](docs/API.md) and [docs/oauth.md](docs/oauth.md).
+3. **The MCP.** There is an [official MCP](https://app.smia.io/m/sagalore) that lets your AI create sagas. It is built on the open Sagalore API and runs on [Smia](https://smia.io), a platform we also make. This repo also has a reference stdio server, `cmd/sagalore-mcp`. `submit_feedback` opens a GitHub issue in `sagalore/sagalore` (label `feedback`) using `SAGALORE_GITHUB_TOKEN` on the server. `SAGALORE_FEEDBACK_REPO` overrides the repo. The issue body is only what the user wrote. See [docs/API.md](docs/API.md) and [docs/oauth.md](docs/oauth.md).
 
 The marketing site is a **separate** repository ([sagalore/website](https://github.com/sagalore/website)). This product repo does not ship or serve the landing page.
 
