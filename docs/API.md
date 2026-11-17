@@ -61,7 +61,9 @@ Session or `gst_`:
 | `PUT` | `/v1/groups/{id}/webhook` | Owner. `{"url":"..."}` (empty clears). JSON event POSTs — see [webhooks.md](webhooks.md). |
 | `PUT` | `/v1/groups/{id}/locale` | Owner. `en` or `nb`. |
 | `GET` | `/v1/me/characters` | Characters synced to the signed-in account. |
-| `PATCH` | `/v1/characters/{id}` | `{"participating":true}`. |
+| `PUT` | `/v1/characters` | Companion sync. The signed-in Battle.net account is the only writer of name, realm, race, class, and level. |
+| `POST` | `/v1/level` | Level-up from the companion. Not a manual edit. |
+| `PATCH` | `/v1/characters/{id}` | Owner only. `{"participating":true}` and/or `{"backstory":"..."}`. Name, realm, race, class, and level are rejected with `character_readonly`. |
 
 ### Join links
 
@@ -94,6 +96,8 @@ Shareable alternative to naming a character. Targeted invites (`POST …/invites
 | --- | --- | --- |
 | `DELETE` | `/v1/admin/sagas/{id}` | Hard-delete one saga. |
 | `DELETE` | `/v1/admin/groups/{id}` | Delete the group and its sagas. |
+| `GET` | `/v1/admin/characters` | Read characters. |
+| `POST`, `PATCH`, `DELETE` | `/v1/admin/characters…` | `403 character_readonly`. Character rows are written by Battle.net sync (`PUT /v1/characters`, `POST /v1/level`), not by an operator. |
 
 Seed runs from `sagalore-api seed` or `make dev`. It does not run on server boot.
 

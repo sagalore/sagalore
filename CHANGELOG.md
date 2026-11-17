@@ -1,5 +1,9 @@
 # Changelog
 
+## Character data is sync-only
+
+Admin create, patch, and delete of characters return `403 character_readonly`. Name, realm, race, class, and level are written by the signed-in companion (`PUT /v1/characters` and `POST /v1/level`). The owner may still set `backstory` with `PATCH /v1/characters/{id}`.
+
 ## Webhook delivery retries
 
 Outbound group webhooks retry on HTTP `429`/`5xx` and transport errors (honour `Retry-After`, exponential backoff). Deliveries are spaced ~750ms on a single worker so Discord rate limits are less likely during multi-saga creates. See [docs/webhooks.md](docs/webhooks.md).
