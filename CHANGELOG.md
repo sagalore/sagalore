@@ -1,5 +1,9 @@
 # Changelog
 
+## MCP feedback
+
+`submit_feedback` on `cmd/sagalore-mcp` opens a GitHub issue labelled `feedback` using `SAGALORE_GITHUB_TOKEN` (repo `SAGALORE_FEEDBACK_REPO`, default `sagalore/sagalore`). Reports are rate-limited. The issue contains the text the user wrote, not their BattleTag or email, unless they typed those themselves.
+
 ## MCP guide
 
 `cmd/sagalore-mcp` is a stdio MCP server. Every tool description includes an example. `how_it_works` explains the addon, the companion, Battle.net sync, objective types, and `/reload`. `SAGALORE_TOKEN` is a personal token; `SAGALORE_API_URL` defaults to `https://api.sagalore.app`.
