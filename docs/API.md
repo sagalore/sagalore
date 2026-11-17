@@ -38,6 +38,7 @@ Session or `gst_`:
 | Method | Path | |
 | --- | --- | --- |
 | `POST` | `/v1/groups` | Create. Caller becomes owner. |
+| `PATCH` | `/v1/groups/{id}` | Owner. Body `{name, locale}`. Locale is `en` or `nb`. The slug does not change. |
 | `GET` | `/v1/groups` | Groups the account belongs to. |
 | `GET` | `/v1/groups/{id}/members` | Members of a group you belong to. |
 | `GET` | `/v1/groups/{id}/leaderboard?period=all\|month\|week\|today` | Ranked characters in a group you belong to. `period` defaults to `all`. |
@@ -56,6 +57,8 @@ Session or `gst_`:
 | `GET` | `/v1/join/{token}` | Public link info. With a Bearer token, also returns the caller's synced `characters`. |
 | `POST` | `/v1/join/{token}` | Redeem. Body `{character_ids:[…]}`. `open` joins immediately; `gated` creates a pending request. Characters must already belong to the caller (companion sync). |
 | `GET` | `/join/{token}` | Thin browser UI (OAuth chrome). Battle.net sign-in, then checkboxes for synced characters. Empty roster tells the player to run the companion first. |
+| `GET` | `/groups` | Owner console (same Battle.net sign-in). Create and edit groups, invite by name and realm, mint and revoke join links, approve or reject requests, remove members. |
+| `GET` | `/groups/{id}` | That console for one group. Only the owner. |
 | `POST` | `/v1/groups/{id}/leave` | Leave. If the owner leaves, the oldest remaining member becomes owner. |
 | `DELETE` | `/v1/groups/{id}/members/{playerID}` | Owner removes a member. |
 | `PUT` | `/v1/groups/{id}/webhook` | Owner. `{"url":"..."}` (empty clears). JSON event POSTs — see [webhooks.md](webhooks.md). |
@@ -73,6 +76,10 @@ Shareable alternative to naming a character. Targeted invites (`POST …/invites
 - Marketing / Discord can deep-link to `{PUBLIC_BASE_URL}/join/{token}`. MCP wrappers and website polish live outside this repo.
 - After join (or while a gated request is pending), the page offers **Install Sagalore** → `SAGALORE_SITE_URL` (default `https://sagalore.app`).
 - Group webhooks fire `join.joined` / `join.requested` / `join.approved` / `join.rejected` (see [webhooks.md](webhooks.md)).
+
+### Group console
+
+`GET /groups` is the browser page for the same routes. Sign-in is Battle.net, stored as a short-lived consent cookie on `/groups` (the same kind of cookie as `/join/{token}`). Owners can create a group, edit its name and locale, invite a character by name and realm, mint and revoke join links (`open` or `gated`, duration, optional max uses), approve or reject gated requests, and remove members. A player who is only a member can see the group on the list and cannot open the management page. Personal groups stay invite-free. The page does not create or edit characters; those still come from companion sync. When `SAGALORE_DEV_TOKEN` is set, `GET /groups/dev-login?token=&battletag=` signs in an existing BattleTag the way the join page does.
 
 ## Sagas
 

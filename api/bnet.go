@@ -23,6 +23,7 @@ const (
 	bnetKindCompanion = "companion"
 	bnetKindOAuth     = "oauth"
 	bnetKindJoin      = "join"
+	bnetKindGroups    = "groups"
 )
 
 type sessionWire struct {
@@ -206,6 +207,38 @@ func (s *Server) beginBnetJoinLogin(ctx context.Context, joinToken string) (stri
 	return s.battleNetAuthorizeURL(state, challenge), nil
 }
 
+// beginBnetGroupsLogin stores a group-console Battle.net attempt. next is an
+// optional group id to return to after sign-in. It is not a URL.
+func (s *Server) beginBnetGroupsLogin(ctx context.Context, next string) (string, error) {
+	next = strings.TrimSpace(next)
+	if next != "" {
+		if err := validUUID(next); err != nil {
+			return "", fmt.Errorf("%w: next", ErrInvalid)
+		}
+	}
+	if !s.bnetConfigured() {
+		return "", errBnetNotConfigured
+	}
+	id, err := randomToken(16)
+	if err != nil {
+		return "", err
+	}
+	verifier, challenge, err := pkcePair()
+	if err != nil {
+		return "", err
+	}
+	state, err := randomToken(16)
+	if err != nil {
+		return "", err
+	}
+	if err := s.store.UpsertBnetAttempt(ctx, bnetAttemptRecord{
+		Kind: bnetKindGroups, ID: id, Verifier: verifier, State: state, OAuthRequestID: next,
+	}); err != nil {
+		return "", err
+	}
+	return s.battleNetAuthorizeURL(state, challenge), nil
+}
+
 func (s *Server) bnetRedirect() string {
 	return strings.TrimRight(s.publicBaseURL, "/") + "/v1/auth/bnet/callback"
 }
@@ -253,6 +286,21 @@ func (s *Server) bnetCallback(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.DeleteBnetAttempt(r.Context(), row.Kind, row.ID)
 		http.SetCookie(w, joinSessionCookie(s.publicBaseURL, raw, r))
 		http.Redirect(w, r, "/join/"+url.PathEscape(row.OAuthRequestID), http.StatusFound)
+		return
+	}
+	if row.Kind == bnetKindGroups {
+		raw, err := s.store.IssueConsentSession(r.Context(), player.ID)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		_ = s.store.DeleteBnetAttempt(r.Context(), row.Kind, row.ID)
+		http.SetCookie(w, groupsSessionCookie(s.publicBaseURL, raw, r))
+		dest := "/groups"
+		if next := strings.TrimSpace(row.OAuthRequestID); validUUID(next) == nil {
+			dest = "/groups/" + url.PathEscape(next)
+		}
+		http.Redirect(w, r, dest, http.StatusFound)
 		return
 	}
 	sess, err := s.store.IssueSessionFor(r.Context(), player.ID)

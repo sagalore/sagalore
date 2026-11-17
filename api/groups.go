@@ -197,6 +197,38 @@ func (s *Store) CreateGroup(ctx context.Context, playerID, slug, name, locale st
 	return contract.GroupSummary{ID: id, Slug: slug, Name: name, Locale: locale, Role: "owner", OwnerID: playerID}, nil
 }
 
+// UpdateGroup changes the name and locale. The slug stays put so saga writes
+// that name the group keep working. Only the owner may call it.
+func (s *Store) UpdateGroup(ctx context.Context, playerID, groupID, name, locale string) (contract.GroupSummary, error) {
+	if err := s.requireOwner(ctx, playerID, groupID); err != nil {
+		return contract.GroupSummary{}, err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" || len([]rune(name)) > 80 {
+		return contract.GroupSummary{}, fmt.Errorf("%w: group name", ErrInvalid)
+	}
+	locale = i18n.Normalize(locale)
+	if locale != i18n.EN && locale != i18n.NB {
+		return contract.GroupSummary{}, fmt.Errorf("%w: locale", ErrInvalid)
+	}
+	var slug, owner string
+	var personal bool
+	err := s.pool.QueryRow(ctx, `
+		UPDATE groups SET name=$2, locale=$3 WHERE id=$1
+		RETURNING slug, personal, COALESCE(owner_player_id::text, '')`,
+		groupID, name, locale).Scan(&slug, &personal, &owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return contract.GroupSummary{}, ErrNotFound
+	}
+	if err != nil {
+		return contract.GroupSummary{}, err
+	}
+	return contract.GroupSummary{
+		ID: groupID, Slug: slug, Name: name, Locale: locale,
+		Role: "owner", OwnerID: owner, Personal: personal,
+	}, nil
+}
+
 func (s *Store) CreateInvite(ctx context.Context, playerID, groupID, name, realm, battletag string) (contract.Invite, error) {
 	if err := validUUID(groupID); err != nil {
 		return contract.Invite{}, err
@@ -821,6 +853,26 @@ func (s *Server) createGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, out)
+}
+
+func (s *Server) patchGroup(w http.ResponseWriter, r *http.Request) {
+	if rejectActorOverride(w, r, false) {
+		return
+	}
+	var body struct {
+		Name   string `json:"name"`
+		Locale string `json:"locale"`
+	}
+	if err := readJSON(r, &body, 1<<16); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", "bad json")
+		return
+	}
+	out, err := s.store.UpdateGroup(r.Context(), playerFrom(r).ID, r.PathValue("id"), body.Name, body.Locale)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {

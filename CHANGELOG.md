@@ -1,5 +1,9 @@
 # Changelog
 
+## Group admin console
+
+Owners manage groups in the browser at `/groups` on the API host (Battle.net sign-in, same chrome as `/join/{token}`). The page creates a group, edits its name and locale (`PATCH /v1/groups/{id}`), invites a character by name and realm, mints and revokes join links, approves or rejects gated requests, and removes members. Only the owner can open a group's management page. Personal groups stay invite-free. Characters are not created or edited here. See [docs/API.md](docs/API.md).
+
 ## Webhook delivery retries
 
 Outbound group webhooks retry on HTTP `429`/`5xx` and transport errors (honour `Retry-After`, exponential backoff). Deliveries are spaced ~750ms on a single worker so Discord rate limits are less likely during multi-saga creates. See [docs/webhooks.md](docs/webhooks.md).
