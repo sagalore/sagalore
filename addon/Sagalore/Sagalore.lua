@@ -326,6 +326,28 @@ local function showFreshNotice()
     chat("|cffc9a227Sagalore|r: " .. text)
 end
 
+local function protocolMismatch()
+    if type(SagaloreObjectives) ~= "table" or type(SagaloreObjectives.dataNewer) ~= "function" then
+        return false
+    end
+    local dataN = 1
+    if type(SagaloreData) == "table" then
+        dataN = tonumber(SagaloreData.protocol) or 1
+    end
+    return SagaloreObjectives.dataNewer(dataN, SagaloreObjectives.CODE_PROTOCOL)
+end
+
+local function updateRequiredLine()
+    return "|cffc9a227Sagalore|r: " .. L("ui.update_required")
+end
+
+local function withUpdateNote(text)
+    if protocolMismatch() then
+        return L("ui.update_required") .. "\n\n" .. (text or "")
+    end
+    return text
+end
+
 local function pipe(s)
     s = s or ""
     s = s:gsub("|", "/")
@@ -1131,6 +1153,9 @@ local function listTitle(entry)
     if entryIsGroup(entry) then
         title = title .. L("ui.group_suffix")
     end
+    if type(SagaloreObjectives) == "table" and type(SagaloreObjectives.entryNeedsNewer) == "function" and SagaloreObjectives.entryNeedsNewer(entry) then
+        title = title .. " — " .. L("ui.requires_newer")
+    end
     return title
 end
 
@@ -1767,11 +1792,23 @@ local function objectiveLines(entry)
         end
         local id = obj.id or tostring(index)
         local step = bucket.steps[id] or {}
-        local done = step.done and true or false
         local pad = ""
         if depth > 0 then
             pad = string.rep("  ", depth) .. "- "
         end
+        local needsNewer = (type(step) == "table" and step.unsupported) or (
+            type(SagaloreObjectives) == "table"
+            and type(SagaloreObjectives.stepNeedsNewer) == "function"
+            and SagaloreObjectives.stepNeedsNewer(obj)
+        )
+        if needsNewer then
+            table.insert(lines, {
+                done = false,
+                text = pad .. (obj.text or L("ui.goal")) .. " — " .. L("ui.requires_newer"),
+            })
+            return
+        end
+        local done = step.done and true or false
         local mem = obj.memory
         if mem ~= "visit" and mem ~= "hold" then
             if obj.type == "item" or obj.type == "collect" then
@@ -3399,7 +3436,7 @@ refresh = function()
             detailGoalsHeader:ClearAllPoints()
             detailGoalsHeader:SetPoint("TOPLEFT", detailChild, "TOPLEFT", 6, -detailY)
             detailY = detailY + (detailGoalsHeader:GetStringHeight() or 20) + 12
-            detailFS:SetText(L(bodyKey))
+            detailFS:SetText(withUpdateNote(L(bodyKey)))
             detailFS:SetTextColor(0.9, 0.84, 0.7)
             showCreateURL = true
         end
@@ -3408,13 +3445,13 @@ refresh = function()
         elseif askInviteInfo then
             placeEmptyInfo("ui.ask_invite", "ui.ask_invite_body")
         elseif player.name == "" then
-            detailFS:SetText(L("ui.login_character"))
+            detailFS:SetText(withUpdateNote(L("ui.login_character")))
             detailFS:SetTextColor(INK.r, INK.g, INK.b)
         elseif type(SagaloreData) ~= "table" or type(SagaloreData.entries) ~= "table" or #SagaloreData.entries == 0 then
-            detailFS:SetText(L("ui.no_sagas"))
+            detailFS:SetText(withUpdateNote(L("ui.no_sagas")))
             detailFS:SetTextColor(INK.r, INK.g, INK.b)
         else
-            detailFS:SetText(string.format(L("ui.no_sagas_for"), CF.displayName()))
+            detailFS:SetText(withUpdateNote(string.format(L("ui.no_sagas_for"), CF.displayName())))
             detailFS:SetTextColor(INK.r, INK.g, INK.b)
         end
         detailFS:SetWidth(width)
@@ -3467,6 +3504,9 @@ refresh = function()
         local okGoals, goalList = pcall(objectiveLines, selectedEntry)
         if okGoals and type(goalList) == "table" then
             goals = goalList
+        end
+        if protocolMismatch() then
+            table.insert(goals, 1, { done = false, text = L("ui.update_required") })
         end
     end
 
@@ -4910,6 +4950,9 @@ end
 -- chat cleanup and pops ADDON_ACTION_FORBIDDEN (Blizzard bug). Forever opens
 -- from the minimap button only — deferred registration still taints.
 function CF.runSlash(msg)
+    if protocolMismatch() then
+        chat(updateRequiredLine())
+    end
     msg = string.lower(string.gsub(msg or "", "^%s+", ""))
     if msg == "hide" then
         hide()
@@ -5703,6 +5746,9 @@ events:SetScript("OnEvent", function(_, event, ...)
         installEmoteHook()
         installInteractHook()
         showFreshNotice()
+        if protocolMismatch() then
+            chat(updateRequiredLine())
+        end
         cachePlayer()
         -- Forever gamepad UI runs right after /reload. Building our frame then
         -- (UIDropDownMenu / CharacterFrame tabs / UISpecialFrames) taints that

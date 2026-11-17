@@ -12,6 +12,7 @@ type SyncResponse struct {
 	Email        string            `json:"email,omitempty"`
 	DisplayName  string            `json:"display_name,omitempty"`
 	GeneratedAt  string            `json:"generated_at"`
+	Protocol     ProtocolInfo      `json:"protocol"`
 	Characters   []Character       `json:"characters"`
 	Quests       []Quest           `json:"sagas"`
 	Progress     []Progress        `json:"progress"`
@@ -88,9 +89,9 @@ type Quest struct {
 	When              *TimeWindow `json:"when,omitempty"`
 	Group             *GroupRule  `json:"group,omitempty"`
 	// Tenant group (Forever / Gutar). Distinct from Group, the party-size rule.
-	GroupID        string   `json:"group_id,omitempty"`
-	GroupSlug      string   `json:"group_slug,omitempty"`
-	GroupName      string   `json:"group_name,omitempty"`
+	GroupID   string `json:"group_id,omitempty"`
+	GroupSlug string `json:"group_slug,omitempty"`
+	GroupName string `json:"group_name,omitempty"`
 	// PendingInviteID is set when this saga is preloaded for a pending join invite
 	// (not yet a member). Empty once the account belongs to the group.
 	PendingInviteID string   `json:"pending_invite_id,omitempty"`
@@ -244,12 +245,12 @@ type JoinRequest struct {
 
 // JoinLinkInfo is the public redeem view for a join token.
 type JoinLinkInfo struct {
-	GroupID     string      `json:"group_id"`
-	GroupName   string      `json:"group_name"`
-	Mode        string      `json:"mode"`
-	ExpiresAt   string      `json:"expires_at"`
-	Characters  []Character `json:"characters,omitempty"`
-	AlreadyMember bool      `json:"already_member,omitempty"`
+	GroupID       string      `json:"group_id"`
+	GroupName     string      `json:"group_name"`
+	Mode          string      `json:"mode"`
+	ExpiresAt     string      `json:"expires_at"`
+	Characters    []Character `json:"characters,omitempty"`
+	AlreadyMember bool        `json:"already_member,omitempty"`
 }
 
 // PersonalToken is a long-lived gst_ credential. Token is set only when it is minted.

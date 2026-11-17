@@ -136,7 +136,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/admin/log", s.withAdmin(s.listLog))
 	mux.HandleFunc("POST /v1/admin/log", s.withAdmin(s.createLog))
 	mux.HandleFunc("DELETE /v1/admin/progress", s.withAdmin(s.deleteAdminProgress))
-	return mux
+	return protocolGate(mux)
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -229,6 +229,7 @@ func (s *Server) sync(w http.ResponseWriter, r *http.Request) {
 	if out.BattleTag == "" {
 		out.BattleTag = p.BattleTag
 	}
+	out.Protocol = contract.CurrentProtocol()
 	writeJSON(w, http.StatusOK, out)
 }
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,24 +33,24 @@ import (
 )
 
 type App struct {
-	Config     config.Config
-	Log        *slog.Logger
-	Client     *backend.Client
-	Queue      *queue.Queue
-	Flavors    []wowpath.Flavor // every install that gets the addon and sync
+	Config       config.Config
+	Log          *slog.Logger
+	Client       *backend.Client
+	Queue        *queue.Queue
+	Flavors      []wowpath.Flavor // every install that gets the addon and sync
 	NoUpdate     bool
 	UpdateDir    string         // tests; empty uses the config directory
 	UpdateClient *update.Client // tests; nil uses GitHub with Update.Token
 	Prompt       func() (string, error)
-	sync       contract.SyncResponse
-	player     contract.Player
-	follows    []follower // chat logs, same order as Flavors
-	mu         sync.Mutex
-	loginMu    sync.Mutex
-	loginTried bool
-	signedOut  bool // user chose Log out; do not open the browser until they log in again
-	notice     string
-	noticeID   string
+	sync         contract.SyncResponse
+	player       contract.Player
+	follows      []follower // chat logs, same order as Flavors
+	mu           sync.Mutex
+	loginMu      sync.Mutex
+	loginTried   bool
+	signedOut    bool // user chose Log out; do not open the browser until they log in again
+	notice       string
+	noticeID     string
 	// Notify shows the desktop banner. Tests set it. Nil uses the OS.
 	Notify func(title, body string)
 	// OnAccountChange runs after login, logout, or sync so the tray can refresh.
@@ -263,7 +264,12 @@ func (a *App) pullSync(ctx context.Context) error {
 		sync, err = a.Client.Sync(ctx)
 	}
 	if err != nil {
+		a.noteUpgrade(ctx, err)
 		return err
+	}
+	if sync.Protocol.Min > contract.ProtocolVersion {
+		a.announce(upgradeMessage(contract.ProtocolVersion, sync.Protocol))
+		a.maybeUpdate(ctx)
 	}
 	prev := a.sync
 	desktop, addonNote := syncdata.ReloadNews(prev, sync)
@@ -293,7 +299,11 @@ func (a *App) pullSync(ctx context.Context) error {
 			entries[i].ImageAspect = ar
 		}
 	}
-	body := syncdata.WriteSyncLua(sync.BattleTag, sync.GeneratedAt, entries, notice, noticeID, sync.Groups, sync.Invites, sync.Characters, sync.Leaderboards)
+	proto := sync.Protocol.Version
+	if proto < 1 {
+		proto = 1
+	}
+	body := syncdata.WriteSyncLua(sync.BattleTag, sync.GeneratedAt, entries, notice, noticeID, sync.Groups, sync.Invites, sync.Characters, sync.Leaderboards, proto)
 	for _, f := range a.Flavors {
 		addonDir := wowpath.AddonDir(f.Path)
 		if err := writeSyncPayload(addonDir, body, images); err != nil {
@@ -344,6 +354,29 @@ func writeSyncPayload(addonDir, body string, images map[string][]byte) error {
 		}
 	}
 	return nil
+}
+
+func upgradeMessage(client int, info contract.ProtocolInfo) string {
+	return fmt.Sprintf("Update Sagalore. This companion speaks protocol %d; the server requires %d–%d. Install the update, then type /reload in game.", client, info.Min, info.Max)
+}
+
+// noteUpgrade tells the player and stages a companion update when the API
+// rejects this build as too old. A newer companion talking to an older server
+// is announced and left alone. Other errors are ignored here.
+func (a *App) noteUpgrade(ctx context.Context, err error) bool {
+	var httpErr *backend.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.Status != http.StatusUpgradeRequired {
+		return false
+	}
+	msg := strings.TrimSpace(httpErr.Message)
+	if msg == "" {
+		msg = "Update Sagalore, then type /reload in game."
+	}
+	a.announce(msg)
+	if httpErr.Code == "upgrade_required" {
+		a.maybeUpdate(ctx)
+	}
+	return true
 }
 
 func (a *App) announce(desktop string) {
@@ -690,6 +723,7 @@ func (a *App) send(ctx context.Context, item queue.Item) error {
 			Race: item.Race, Class: item.Class, BattleTag: item.BattleTag,
 		})
 		if err != nil {
+			a.noteUpgrade(ctx, err)
 			return err
 		}
 		return a.pullSync(ctx)
@@ -712,6 +746,9 @@ func (a *App) send(ctx context.Context, item queue.Item) error {
 		_, err := a.Client.Level(ctx, contract.LevelRequest{
 			CharacterID: item.CharacterID, BattleTag: tag, Level: item.Level,
 		})
+		if err != nil {
+			a.noteUpgrade(ctx, err)
+		}
 		return err
 	}
 	if item.QuestTitle == "" {
@@ -727,6 +764,7 @@ func (a *App) send(ctx context.Context, item queue.Item) error {
 		Instance: item.Instance, GroupMembers: item.GroupMembers,
 	}, nil)
 	if err != nil {
+		a.noteUpgrade(ctx, err)
 		return err
 	}
 	_ = a.pullSync(ctx)
