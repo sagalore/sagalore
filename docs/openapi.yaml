@@ -107,6 +107,19 @@ paths:
       responses:
         "201":
           description: created
+  /v1/groups/{id}:
+    patch:
+      summary: Owner updates the group name and locale. The slug stays.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: updated group
+        "403":
+          description: not the owner
   /v1/groups/{id}/invites:
     get:
       summary: Pending outgoing invites for an owner or member

@@ -74,3 +74,5 @@ curl -s -X POST "$API/v1/sagas" \
 ```
 
 If the player is in exactly one group, omit `group`.
+
+Owners can do the same membership work in a browser at `{PUBLIC_BASE_URL}/groups` (Battle.net sign-in). That page creates and edits groups, invites by name and realm, mints and revokes join links, and approves or rejects requests. It does not create characters.
