@@ -4,10 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/sagalore/sagalore/internal/contract"
 )
 
 // ClientIdle is how long the companion waits for a data frame (the server's
@@ -50,8 +52,9 @@ func Maintain(ctx context.Context, h Hooks) {
 		}
 		conn, resp, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
 			HTTPHeader: http.Header{
-				"Authorization": []string{"Bearer " + token},
-				"User-Agent":    []string{"Sagalore"},
+				"Authorization":         []string{"Bearer " + token},
+				"User-Agent":            []string{"Sagalore"},
+				contract.ProtocolHeader: []string{strconv.Itoa(contract.ProtocolVersion)},
 			},
 		})
 		if err != nil {

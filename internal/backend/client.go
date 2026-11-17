@@ -82,6 +82,7 @@ func (c *Client) PollBnet(ctx context.Context, attempt string) (contract.Session
 	if err != nil {
 		return contract.SessionResponse{}, false, err
 	}
+	req.Header.Set(contract.ProtocolHeader, strconv.Itoa(contract.ProtocolVersion))
 	resp, err := c.http().Do(req)
 	if err != nil {
 		return contract.SessionResponse{}, false, err
@@ -152,6 +153,7 @@ func (c *Client) SagaImage(ctx context.Context, questID string) (contentType str
 		req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
 	req.Header.Set("User-Agent", "Sagalore")
+	req.Header.Set(contract.ProtocolHeader, strconv.Itoa(contract.ProtocolVersion))
 	resp, err := c.http().Do(req)
 	if err != nil {
 		return "", nil, err
@@ -251,6 +253,7 @@ func (c *Client) doToken(ctx context.Context, token, method, path string, body [
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	req.Header.Set("User-Agent", "Sagalore")
+	req.Header.Set(contract.ProtocolHeader, strconv.Itoa(contract.ProtocolVersion))
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}

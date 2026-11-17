@@ -367,4 +367,27 @@ assertTrue(bucket.started_at == 1000, "stamp is the first event")
 assertTrue(not M.noteSagaStart(bucket, { rabbits = { count = 2, need = 5 } }, 2000), "later progress keeps the stamp")
 assertTrue(bucket.started_at == 1000, "stamp does not move")
 
+steps, done = M.evaluate({
+    { id = "fish", type = "fish", text = "Catch a boot" },
+    { id = "place", type = "go", text = "Goldshire", zone = "Elwynn Forest" },
+}, { zone = "Elwynn Forest" }, {}, false)
+assertTrue(steps.fish.unsupported and not steps.fish.done, "unknown step is flagged")
+assertTrue(not done, "unknown step blocks completion")
+assertTrue(steps.place.done, "known step still tracks")
+
+steps, done = M.evaluate({
+    { id = "seq", type = "sequence", text = "New beat", within_sec = 30, beats = {
+        { id = "a", type = "go", text = "There", zone = "Elwynn Forest" },
+        { id = "b", type = "craft", text = "Make a thing" },
+    } },
+}, { zone = "Elwynn Forest" }, {}, false)
+assertTrue(steps.seq.unsupported and not steps.seq.done and not done, "unknown sequence beat is not tracked")
+
+assertTrue(M.dataNewer(3, 2), "newer data needs an update")
+assertTrue(not M.dataNewer(2, 2), "same protocol is fine")
+assertTrue(not M.dataNewer(nil, 2), "missing data protocol is the previous version")
+assertTrue(M.supportedType("go") and M.supportedType("talk") and not M.supportedType("fish"), "type allowlist")
+assertTrue(M.entryNeedsNewer({ objectives = { { id = "fish", type = "fish", text = "Catch" } } }), "saga with an unknown step needs a newer addon")
+assertTrue(not M.entryNeedsNewer({ objectives = { { id = "place", type = "go", text = "There", zone = "Elwynn" } } }), "known saga does not need a newer addon")
+
 print("objectives ok")

@@ -13,9 +13,10 @@ import (
 )
 
 func TestCompleteSendsVersionAndOmitsEmptyScreenshot(t *testing.T) {
-	var gotAuth, gotVersion, gotFile string
+	var gotAuth, gotVersion, gotFile, gotProto string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
+		gotProto = r.Header.Get(contract.ProtocolHeader)
 		if r.URL.Path == "/v1/sync" {
 			_, _ = w.Write([]byte(`{"battletag":"Magnus#2231","characters":[],"sagas":[],"progress":[]}`))
 			return
@@ -52,8 +53,8 @@ func TestCompleteSendsVersionAndOmitsEmptyScreenshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotAuth != "Bearer gsk_test" || gotVersion != "3" || gotFile != "" {
-		t.Fatalf("auth %q version %q file %q", gotAuth, gotVersion, gotFile)
+	if gotAuth != "Bearer gsk_test" || gotVersion != "3" || gotFile != "" || gotProto != "2" {
+		t.Fatalf("auth %q version %q file %q proto %q", gotAuth, gotVersion, gotFile, gotProto)
 	}
 	if !res.Completed || res.QuestVersion != 3 {
 		t.Fatalf("%+v", res)

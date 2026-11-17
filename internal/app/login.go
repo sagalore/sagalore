@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -156,6 +157,7 @@ func registerBnetAttempt(ctx context.Context, httpClient *http.Client, startURL 
 	if err != nil {
 		return err
 	}
+	req.Header.Set(contract.ProtocolHeader, strconv.Itoa(contract.ProtocolVersion))
 	client := httpClient
 	if client == nil {
 		client = http.DefaultClient

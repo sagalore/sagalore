@@ -22,6 +22,20 @@
 
 local M = {}
 
+-- Keep in step with internal/contract.ProtocolVersion.
+M.CODE_PROTOCOL = 2
+
+-- dataNewer is true when SavedVariables were written by a newer protocol
+-- than this addon build. Missing data is protocol 1.
+function M.dataNewer(dataProtocol, codeProtocol)
+    local dataN = tonumber(dataProtocol)
+    if not dataN or dataN < 1 then
+        dataN = 1
+    end
+    local codeN = tonumber(codeProtocol) or M.CODE_PROTOCOL
+    return dataN > codeN
+end
+
 local function norm(s)
     if type(s) ~= "string" then
         return ""
@@ -589,6 +603,77 @@ local function stepKind(kind)
     return kind
 end
 
+local beatKinds = {
+    location = true,
+    interact = true,
+    emote = true,
+    kill = true,
+}
+
+-- supportedType is an objective type this addon can track.
+-- Unknown types must be flagged, not treated as a normal incomplete goal.
+function M.supportedType(kind)
+    kind = stepKind(kind)
+    return kind == "location" or kind == "interact" or kind == "collect"
+        or kind == "kill" or kind == "emote" or kind == "level"
+        or kind == "instance_run" or kind == "sequence"
+        or kind == "all_of" or kind == "any_of"
+end
+
+local function beatsSupported(obj)
+    if type(obj) ~= "table" or type(obj.beats) ~= "table" then
+        return true
+    end
+    for i = 1, #obj.beats do
+        local beat = obj.beats[i]
+        if type(beat) == "table" and not beatKinds[stepKind(beat.type)] then
+            return false
+        end
+    end
+    return true
+end
+
+-- stepNeedsNewer is true when this step, a beat, or a child uses a type
+-- this addon does not track.
+function M.stepNeedsNewer(obj)
+    if type(obj) ~= "table" then
+        return false
+    end
+    if obj.type == "sequence" and not beatsSupported(obj) then
+        return true
+    end
+    if not M.supportedType(obj.type) then
+        return true
+    end
+    if type(obj.beats) == "table" then
+        for i = 1, #obj.beats do
+            if M.stepNeedsNewer(obj.beats[i]) then
+                return true
+            end
+        end
+    end
+    if type(obj.objectives) == "table" then
+        for i = 1, #obj.objectives do
+            if M.stepNeedsNewer(obj.objectives[i]) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function M.entryNeedsNewer(entry)
+    if type(entry) ~= "table" or type(entry.objectives) ~= "table" then
+        return false
+    end
+    for i = 1, #entry.objectives do
+        if M.stepNeedsNewer(entry.objectives[i]) then
+            return true
+        end
+    end
+    return false
+end
+
 local function nowUnix(state)
     local n = tonumber(state.now)
     if n and n > 0 then
@@ -785,6 +870,23 @@ local function checkComposite(obj, state, saved)
 end
 
 checkOne = function(obj, state, saved, prev, live)
+    local unsupported = type(obj) ~= "table" or not M.supportedType(obj.type)
+    if type(obj) == "table" and obj.type == "sequence" and not beatsSupported(obj) then
+        unsupported = true
+    end
+    if unsupported then
+        local need = 0
+        if type(obj) == "table" then
+            need = needCount(obj)
+        end
+        return {
+            done = false,
+            unsupported = true,
+            count = 0,
+            need = need,
+            active = false,
+        }, {}
+    end
     local memory = memoryOf(obj)
     local row = {
         done = prev.done and true or false,
