@@ -48,7 +48,6 @@ func TestRealtimeTwoInstances(t *testing.T) {
 		t.Fatalf("missing bearer: status %d err %v", status, err)
 	}
 
-	admin := apiClient{base: srv1.URL, token: "admin-test", http: srv1.Client()}
 	magnusPlayer, magnusToken := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
 	otherPlayer, otherToken := devSession(t, "bnet-other", "Other#1", "Other")
 	group := devGroup(t, magnusPlayer.ID, "tutorial", "Tutorial")
@@ -56,14 +55,7 @@ func TestRealtimeTwoInstances(t *testing.T) {
 	magnus := contract.CreatePlayerResponse{Player: magnusPlayer, APIKey: magnusToken}
 	other := contract.CreatePlayerResponse{Player: otherPlayer, APIKey: otherToken}
 	author := apiClient{base: srv1.URL, token: magnusToken, http: srv1.Client()}
-	var magni contract.Character
-	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
-		"player_id": magnus.Player.ID, "name": "Magni", "realm": "Argent Dawn",
-		"race": "Dwarf", "class": "Paladin", "level": 12,
-	}, &magni)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("character %d %v", statusOf(resp), err)
-	}
+	magni := syncCharacter(t, author, "Magni", "Argent Dawn", "Dwarf", "Paladin", 12)
 
 	a := dialPlayer(t, srv1.URL, magnus.APIKey)
 	b := dialPlayer(t, srv2.URL, other.APIKey)

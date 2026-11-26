@@ -23,21 +23,10 @@ func TestSagaChains(t *testing.T) {
 	author := apiClient{base: srv.URL, token: token, http: srv.Client()}
 	created := contract.CreatePlayerResponse{Player: playerRec, APIKey: token}
 
-	var magni, mira contract.Character
-	resp, err := admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
-		"player_id": created.Player.ID, "name": "Magni", "realm": "Argent Dawn",
-		"race": "Dwarf", "class": "Paladin", "level": 12,
-	}, &magni)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("magni %d %v", statusOf(resp), err)
-	}
-	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
-		"player_id": created.Player.ID, "name": "Mira", "realm": "Argent Dawn",
-		"race": "Human", "class": "Mage", "level": 12,
-	}, &mira)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("mira %d %v", statusOf(resp), err)
-	}
+	magni := syncCharacter(t, author, "Magni", "Argent Dawn", "Dwarf", "Paladin", 12)
+	mira := syncCharacter(t, author, "Mira", "Argent Dawn", "Human", "Mage", 12)
+	var resp *http.Response
+	var err error
 
 	var first contract.Quest
 	resp, err = author.do(http.MethodPost, "/v1/sagas", map[string]any{

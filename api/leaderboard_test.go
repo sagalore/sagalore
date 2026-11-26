@@ -19,7 +19,6 @@ func TestLeaderboardAndActivitySort(t *testing.T) {
 
 	srv := httptest.NewServer((&Server{store: NewStore(testPool), adminToken: "admin-test"}).Handler())
 	t.Cleanup(srv.Close)
-	admin := apiClient{base: srv.URL, token: "admin-test", http: srv.Client()}
 
 	magnus, magnusToken := devSession(t, "bnet-magnus", "Magnus#2231", "Magnus")
 	miraPlayer, miraToken := devSession(t, "bnet-mira", "Mira#1", "Mira")
@@ -34,28 +33,9 @@ func TestLeaderboardAndActivitySort(t *testing.T) {
 	brann := apiClient{base: srv.URL, token: brannToken, http: srv.Client()}
 	stranger := apiClient{base: srv.URL, token: strangerToken, http: srv.Client()}
 
-	var magni, miraChar, brannChar contract.Character
-	resp, err := admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
-		"player_id": magnus.ID, "name": "Magni", "realm": "Celebras",
-		"race": "Dwarf", "class": "Warrior", "level": 42,
-	}, &magni)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("magni %d %v", statusOf(resp), err)
-	}
-	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
-		"player_id": miraPlayer.ID, "name": "Mira", "realm": "Celebras",
-		"race": "Human", "class": "Mage", "level": 40,
-	}, &miraChar)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("mira %d %v", statusOf(resp), err)
-	}
-	resp, err = admin.do(http.MethodPost, "/v1/admin/characters", map[string]any{
-		"player_id": brannPlayer.ID, "name": "Brann", "realm": "Celebras",
-		"race": "Dwarf", "class": "Hunter", "level": 38,
-	}, &brannChar)
-	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("brann %d %v", statusOf(resp), err)
-	}
+	magni := syncCharacter(t, author, "Magni", "Celebras", "Dwarf", "Warrior", 42)
+	miraChar := syncCharacter(t, mira, "Mira", "Celebras", "Human", "Mage", 40)
+	brannChar := syncCharacter(t, brann, "Brann", "Celebras", "Dwarf", "Hunter", 38)
 
 	makeSaga := func(title string) contract.Quest {
 		t.Helper()
@@ -92,6 +72,8 @@ func TestLeaderboardAndActivitySort(t *testing.T) {
 		t.Fatalf("duration %+v", first)
 	}
 	var again contract.CompletionResponse
+	var resp *http.Response
+	var err error
 	resp, err = author.do(http.MethodPost, "/v1/complete", contract.CompletionRequest{
 		CharacterID: magni.ID, QuestID: sagaA.ID, QuestVersion: 1,
 		CompletedAt: "2026-10-29T13:00:00Z", StartedAt: "2026-10-29T12:00:00Z",
