@@ -1,5 +1,21 @@
 # Changelog
 
+## Saga edits without a changes note
+
+`PATCH /v1/sagas/{id}` still stores `changes` on the new version. When the field is omitted, the server writes one short line per changed field (`Updated title`, `Updated steps`, `Retired saga`, and the same kind of line for the other edited fields). Send `changes` when those words should be the author's. A cover-only patch still does not bump the version. See [docs/API.md](docs/API.md).
+
+## Cover from an image URL
+
+`POST /v1/sagas` and `PATCH /v1/sagas/{id}` accept `image_url`, an https URL the API fetches itself. The host must be public, the port is 443, and the body must be a png, jpeg, gif, or webp of at most 8 MiB. A cover-only `image_url` does not bump the version. The response field `image_url` remains the stored cover path. See [docs/sagas-api.md](docs/sagas-api.md).
+
+## Item steps can hide the count
+
+An item step still defaults `count` to 1, and that count is what the addon tracks. `show_count: false` hides the in-game `(have/need)` suffix and does not append the item name after the step text. Omit the flag to keep the suffix. The companion writes `show_count = false` into `SagaloreData.lua`. Older addons ignore the flag until they are updated.
+
+## MCP guide
+
+`create_saga` states that item steps require `item_id` and default to memory `hold`, and that `show_count: false` hides the count suffix. `create_saga` and `update_saga` accept `image_url`. `update_saga` describes `changes` as optional. `get_saga` returns the saga JSON and does not build an HTML view.
+
 ## Group admin console
 
 Owners manage groups in the browser at `/groups` on the API host (Battle.net sign-in, same chrome as `/join/{token}`). The page creates a group, edits its name and locale (`PATCH /v1/groups/{id}`), invites a character by name and realm, mints and revokes join links, approves or rejects gated requests, and removes members. Only the owner can open a group's management page. Personal groups stay invite-free. Characters are not created or edited here. See [docs/API.md](docs/API.md).

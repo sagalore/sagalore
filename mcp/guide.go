@@ -210,8 +210,9 @@ func guideTools() []Tool {
 				"saga_id":     id,
 				"title":       map[string]any{"type": "string"},
 				"description": map[string]any{"type": "string"},
-				"objectives":  map[string]any{"type": "array", "description": "Full replacement step list. Same shape as create_saga."},
-				"changes":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Required when title, description, or steps change."},
+				"objectives":  map[string]any{"type": "array", "description": "Full replacement step list. Same shape as create_saga. Item steps require item_id and default to memory hold. show_count false hides the in-game count suffix."},
+				"changes":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Short notes stored on the new version. Optional: when omitted, the API writes one line per changed field."},
+				"image_url":   map[string]any{"type": "string", "description": "https URL of a png, jpeg, gif, or webp cover (max 8 MiB). The API fetches it. A cover-only call does not bump the version."},
 				"party":       map[string]any{"type": "boolean"},
 				"active":      map[string]any{"type": "boolean"},
 				"min_level":   map[string]any{"type": "integer"},
@@ -254,6 +255,7 @@ func createSagaSchema() map[string]any {
 		"min_level":              map[string]any{"type": "integer"},
 		"active":                 map[string]any{"type": "boolean", "description": "False keeps it a draft. Omitted means active."},
 		"assigned_character_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		"image_url":              map[string]any{"type": "string", "description": "https URL of a png, jpeg, gif, or webp cover (max 8 MiB). The API fetches it. Do not send bytes."},
 	}, "title", "description", "party", "objectives")
 }
 
@@ -388,7 +390,7 @@ Recommended flow:
 4. The companion syncs. Tell the player to type /reload. The saga shows in /sagalore. Until that reload, a new saga looks like it did nothing.
 5. They play the steps. The addon tracks them. The companion posts the completion. You do not mark a saga complete from chat.
 
-Objective types (use these names): go (be somewhere; memory visit latches, hold clears when they leave), talk (dialogue or /talk on an NPC; targeting is not enough), item (have N in bags; memory hold by default), kill (defeat N by name; optional group.level is exact for every member), emote (a token such as WAVE), sequence (ordered beats inside one within_sec window, 2 to 6 beats), level (reach a level), instance_run (leave N dungeons or raids).
+Objective types (use these names): go (be somewhere; memory visit latches, hold clears when they leave), talk (dialogue or /talk on an NPC; targeting is not enough), item (have N in bags; item_id is required; memory hold by default; show_count false hides the (have/need) suffix), kill (defeat N by name; optional group.level is exact for every member), emote (a token such as WAVE), sequence (ordered beats inside one within_sec window, 2 to 6 beats), level (reach a level), instance_run (leave N dungeons or raids).
 At most 20 steps. Each step id is 1–40 characters, letters, digits, underscore, or hyphen. Do not send created_by. Do not use all_of or any_of for a new saga. Coordinates and zone names belong to the WoW version the saga was built for.
 
 If /sagalore does nothing after a companion update, the usual fix is /reload. If the addon says update required, update the companion, then /reload.`
@@ -465,7 +467,7 @@ const listSagasDescription = `List sagas visible to the signed-in player.
 Example: {} or {"character_id":"<id from list_characters>"} to include that character's status.
 Zone names and coordinates are for the WoW version the saga was built for. Do not reuse them on another version without checking.`
 
-const getSagaDescription = `Fetch one saga by saga_id, including steps, description, and completion activity.
+const getSagaDescription = `Fetch one saga by saga_id. The reply is the saga JSON: steps, description, versions, and completion activity. There is no HTML view.
 
 Example: {"saga_id":"<id from list_sagas or create_saga>"}.
 Use this before update_saga so you send a complete objectives list.`
@@ -473,14 +475,14 @@ Use this before update_saga so you send a complete objectives list.`
 const createSagaDescription = `Create a saga as the signed-in player. Do not send created_by.
 
 Required: title, description, party (true or false), objectives (1 to 20 steps).
-Optional: group (tenant slug; omit when the player is in exactly one group), active (false is a draft), min_level, assigned_character_ids.
+Optional: group (tenant slug; omit when the player is in exactly one group), active (false is a draft), min_level, assigned_character_ids, image_url (https cover the API fetches: png, jpeg, gif, or webp, max 8 MiB).
 
 Example: {"title":"An evening in Goldshire","description":"Visit Lion's Pride Inn.","party":false,"objectives":[{"id":"inn","type":"go","text":"Stand in Goldshire","zone":"Elwynn Forest"}]}.
 
 Step fields: id, type, text, plus type-specific fields.
 - go: be at a place. zone and/or map_id, x, y. memory "visit" (default) latches; "hold" is only while they are there.
 - talk: npc name. Completes on that NPC's dialogue, a right-click, or /talk. Targeting alone is not enough.
-- item: item_id and/or item_name, count. memory "hold" (default) clears when the bags do.
+- item: item_id is required. item_name is optional display text. count defaults to 1 and is still tracked when omitted. memory "hold" (default) clears when the bags do. show_count false hides the in-game (have/need) suffix and does not append the item name, so the step text stands alone. Omit show_count to keep the suffix.
 - kill: npc name, count. Optional group object {level, size, instance}. level is the exact level of every member.
 - emote: emote token such as "WAVE" or "/wave", optional npc and zone.
 - sequence: within_sec plus 2 to 6 beats (each beat is a small go, talk, emote, or kill).
@@ -492,7 +494,7 @@ Constraints: at most 20 steps. id is 1–40 characters (letters, digits, undersc
 const updateSagaDescription = `Patch a saga the signed-in player authored. Only sagas they can edit are accepted.
 
 Example: {"saga_id":"<id>","title":"An evening in Goldshire","changes":["Clearer title"]}.
-When steps change, send the full objectives array (same types and constraints as create_saga), not a single edited step. Text or step changes need changes (a short list of what changed) and bump the saga version. Players who already loaded the old version keep that version until they /reload. Do not send created_by.`
+When steps change, send the full objectives array (same types and constraints as create_saga), not a single edited step. Item steps require item_id and default to memory "hold". show_count false hides the in-game count suffix. Text or step changes bump the saga version. changes is an optional list of short notes; when it is omitted the API stores one line per changed field (for example "Updated title"). Send changes when those words should be yours. image_url is an https cover the API fetches (png, jpeg, gif, or webp, max 8 MiB). A cover-only patch does not bump the version. Players who already loaded the old version keep that version until they /reload. Do not send created_by.`
 
 const archiveSagaDescription = `Retire a saga the player authored so companions stop offering it (active=false).
 

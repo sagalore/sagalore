@@ -1093,7 +1093,7 @@ local function itemLink(id, fallbackName)
     return itemQualityHex(quality) .. "[" .. name .. "]|r"
 end
 
-local function applyItemLink(text, obj)
+local function applyItemLink(text, obj, append)
     local id = tonumber(obj.item_id)
     if not id then
         return text
@@ -1108,6 +1108,9 @@ local function applyItemLink(text, obj)
         if i then
             return string.sub(text, 1, i - 1) .. link .. string.sub(text, j + 1)
         end
+    end
+    if append == false then
+        return text
     end
     return text .. " " .. link
 end
@@ -1824,7 +1827,10 @@ local function objectiveLines(entry)
         elseif done then
             label = pad .. string.format(L("ui.goal_done"), goalText)
         else
-            label = pad .. applyItemLink(goalText, obj)
+            local hideItemChrome = type(SagaloreObjectives) == "table"
+                and type(SagaloreObjectives.hideItemChrome) == "function"
+                and SagaloreObjectives.hideItemChrome(obj)
+            label = pad .. applyItemLink(goalText, obj, not hideItemChrome)
             local groupedKill = obj.type == "kill" and type(obj.group) == "table" and obj.group.level
             if obj.type == "collect" or obj.type == "item" or (obj.type == "kill" and not groupedKill) or obj.type == "instance_run" then
                 local need = tonumber(obj.count) or 1
@@ -1838,7 +1844,9 @@ local function objectiveLines(entry)
                         end
                     end
                 end
-                label = string.format("%s (%d/%d)", label, have, need)
+                if not hideItemChrome then
+                    label = string.format("%s (%d/%d)", label, have, need)
+                end
             end
             if obj.type == "level" then
                 local need = tonumber(obj.level) or 0

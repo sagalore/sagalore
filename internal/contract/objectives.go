@@ -130,21 +130,25 @@ type StepGroup struct {
 // The same array is snapshotted on every quest version.
 // Children are used only by legacy all_of and any_of. Sequence steps use beats.
 type Objective struct {
-	ID        string      `json:"id"`
-	Type      string      `json:"type"`
-	Text      string      `json:"text"`
-	Memory    string      `json:"memory,omitempty"`
-	Zone      string      `json:"zone,omitempty"`
-	Subzone   string      `json:"subzone,omitempty"`
-	MapID     *int        `json:"map_id,omitempty"`
-	X         *float64    `json:"x,omitempty"`
-	Y         *float64    `json:"y,omitempty"`
-	Radius    *float64    `json:"radius,omitempty"`
-	NPC       string      `json:"npc,omitempty"`
-	Object    string      `json:"object,omitempty"`
-	ItemID    *int        `json:"item_id,omitempty"`
-	ItemName  string      `json:"item_name,omitempty"`
-	Count     int         `json:"count,omitempty"`
+	ID       string   `json:"id"`
+	Type     string   `json:"type"`
+	Text     string   `json:"text"`
+	Memory   string   `json:"memory,omitempty"`
+	Zone     string   `json:"zone,omitempty"`
+	Subzone  string   `json:"subzone,omitempty"`
+	MapID    *int     `json:"map_id,omitempty"`
+	X        *float64 `json:"x,omitempty"`
+	Y        *float64 `json:"y,omitempty"`
+	Radius   *float64 `json:"radius,omitempty"`
+	NPC      string   `json:"npc,omitempty"`
+	Object   string   `json:"object,omitempty"`
+	ItemID   *int     `json:"item_id,omitempty"`
+	ItemName string   `json:"item_name,omitempty"`
+	Count    int      `json:"count,omitempty"`
+	// ShowCount false hides the in-game (have/need) suffix on an item step
+	// and does not append the item name after the text. Nil and true keep
+	// the suffix. Count is still stored so the tracker can finish the step.
+	ShowCount *bool       `json:"show_count,omitempty"`
 	Level     int         `json:"level,omitempty"` // type=level target; not the kill group.level
 	Kinds     []string    `json:"kinds,omitempty"` // type=instance_run: party and/or raid
 	Emote     string      `json:"emote,omitempty"`
@@ -414,6 +418,9 @@ func normalizeOne(o Objective, allowLegacy bool, seen map[string]bool, depth int
 		o.Beats = nil
 	default:
 		return Objective{}, fmt.Errorf("objective %s: type must be go, talk, item, kill, emote, sequence, level, or instance_run", o.ID)
+	}
+	if o.ShowCount != nil && *o.ShowCount {
+		o.ShowCount = nil
 	}
 	return o, nil
 }

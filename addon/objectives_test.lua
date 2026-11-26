@@ -390,4 +390,14 @@ assertTrue(M.supportedType("go") and M.supportedType("talk") and not M.supported
 assertTrue(M.entryNeedsNewer({ objectives = { { id = "fish", type = "fish", text = "Catch" } } }), "saga with an unknown step needs a newer addon")
 assertTrue(not M.entryNeedsNewer({ objectives = { { id = "place", type = "go", text = "There", zone = "Elwynn" } } }), "known saga does not need a newer addon")
 
+steps, done = M.evaluate({
+    { id = "bread", type = "item", text = "Have bread", item_id = 4540, show_count = false },
+}, { items = { [4540] = 1 } }, {})
+assertTrue(steps.bread.done and done, "show_count false still tracks the item")
+assertTrue(M.hideItemChrome({ type = "item", show_count = false }), "item text can stand alone")
+assertTrue(M.hideItemChrome({ type = "collect", show_count = false }), "collect uses the same flag")
+assertTrue(not M.hideItemChrome({ type = "item" }), "omitted show_count keeps the suffix")
+assertTrue(not M.hideItemChrome({ type = "item", show_count = true }), "explicit show_count keeps the suffix")
+assertTrue(not M.hideItemChrome({ type = "kill", show_count = false }), "kill counts stay visible")
+
 print("objectives ok")

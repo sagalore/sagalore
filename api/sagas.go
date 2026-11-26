@@ -26,6 +26,15 @@ func (s *Server) createSaga(w http.ResponseWriter, r *http.Request) {
 	if rejectActorOverride(w, r, strings.TrimSpace(body.CreatedBy) != "") {
 		return
 	}
+	if strings.TrimSpace(body.ImageURL) != "" && strings.TrimSpace(body.ImageBase64) != "" {
+		writeErr(w, http.StatusBadRequest, "invalid", "send image bytes or image_url, not both")
+		return
+	}
+	image, contentType, err = s.takeCover(r.Context(), image, contentType, body.ImageURL)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+		return
+	}
 	in, err := fillQuestInput(body)
 	if err != nil {
 		s.fail(w, err)
@@ -123,12 +132,23 @@ func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
 	}
 	p := playerFrom(r)
 	id := r.PathValue("id")
-	if !questPatchHasFields(patch) && len(image) > 0 {
+	image, contentType, err = s.takeCover(r.Context(), image, contentType, body.ImageURL)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+		return
+	}
+	if len(image) > 0 {
 		image, contentType, err = screenshot.NormalizeUpload(image)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, "invalid", err.Error())
 			return
 		}
+	}
+	if !questPatchHasFields(patch) && len(image) == 0 {
+		writeErr(w, http.StatusBadRequest, "invalid", "empty patch")
+		return
+	}
+	if !questPatchHasFields(patch) && len(image) > 0 {
 		out, err := s.store.SetQuestImage(r.Context(), p.ID, id, contentType, image)
 		if err != nil {
 			s.fail(w, err)
@@ -143,11 +163,22 @@ func (s *Server) patchSaga(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	if len(image) > 0 {
+		out, err = s.store.SetQuestImage(r.Context(), p.ID, id, contentType, image)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+	}
 	if gerr == nil {
 		actor := displayActor(p.DisplayName, "", p.BattleTag)
-		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor, patch.Changes)
-		_ = image
-		_ = contentType
+		notes := patch.Changes
+		if !changeText(notes) {
+			if filled, nerr := changesForPatch(patch); nerr == nil {
+				notes = filled
+			}
+		}
+		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor, notes)
 	}
 	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
 }

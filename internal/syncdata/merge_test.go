@@ -96,6 +96,29 @@ func TestSagaAuthorAndCompleters(t *testing.T) {
 	}
 }
 
+func TestLuaWritesHiddenItemCount(t *testing.T) {
+	item := 4540
+	hide := false
+	lua := WriteLua("", "t", []Entry{{
+		QuestID: "q", QuestVersion: 1,
+		Objectives: []contract.Objective{{
+			ID: "bread", Type: "item", Text: "Have bread", ItemID: &item, Count: 1, ShowCount: &hide,
+		}},
+	}})
+	if !strings.Contains(lua, "show_count = false") || !strings.Contains(lua, "count = 1") {
+		t.Fatal(lua)
+	}
+	shown := WriteLua("", "t", []Entry{{
+		QuestID: "q", QuestVersion: 1,
+		Objectives: []contract.Objective{{
+			ID: "bread", Type: "item", Text: "Have bread", ItemID: &item, Count: 1,
+		}},
+	}})
+	if strings.Contains(shown, "show_count") {
+		t.Fatal(shown)
+	}
+}
+
 func TestLuaEscapes(t *testing.T) {
 	lua := WriteLua(`Magnus#2231`, "t", []Entry{{
 		Character: "Magni", Title: `Si "hei"`, Description: "linje\nto", QuestVersion: 1, QuestID: "q",

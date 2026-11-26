@@ -206,6 +206,9 @@ func writeLuaObjective(b *strings.Builder, o contract.Objective, indent string) 
 	if o.Count > 0 {
 		fmt.Fprintf(b, "%scount = %d,\n", field, o.Count)
 	}
+	if o.ShowCount != nil && !*o.ShowCount {
+		fmt.Fprintf(b, "%sshow_count = false,\n", field)
+	}
 	if o.Level > 0 {
 		fmt.Fprintf(b, "%slevel = %d,\n", field, o.Level)
 	}

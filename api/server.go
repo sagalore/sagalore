@@ -32,6 +32,8 @@ type Server struct {
 	bnetClientID     string
 	bnetClientSecret string
 	bnet             *bnetFlow
+	// fetchCoverFn overrides image_url downloads. Nil uses the public fetcher.
+	fetchCoverFn func(ctx context.Context, raw string) ([]byte, string, error)
 }
 
 const defaultSiteURL = "https://sagalore.app"
@@ -393,6 +395,15 @@ func (s *Server) createQuest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
 		return
 	}
+	if strings.TrimSpace(body.ImageURL) != "" && strings.TrimSpace(body.ImageBase64) != "" {
+		writeErr(w, http.StatusBadRequest, "invalid", "send image bytes or image_url, not both")
+		return
+	}
+	image, contentType, err = s.takeCover(r.Context(), image, contentType, body.ImageURL)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+		return
+	}
 	cover, coverType := image, contentType
 	if len(cover) == 0 {
 		cover, coverType, err = decodeCover(body.ImageBase64)
@@ -497,6 +508,18 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	patch.CreatedBy = nil
+	image, contentType, err = s.takeCover(r.Context(), image, contentType, body.ImageURL)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+		return
+	}
+	if len(image) > 0 {
+		image, contentType, err = screenshot.NormalizeUpload(image)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid", err.Error())
+			return
+		}
+	}
 	hasFields := questPatchHasFields(patch)
 	if !hasFields && len(image) == 0 {
 		writeErr(w, http.StatusBadRequest, "invalid", "empty patch")
@@ -529,7 +552,13 @@ func (s *Server) patchQuest(w http.ResponseWriter, r *http.Request) {
 		if actor == "" && body.EditorEmail != nil {
 			actor = strings.TrimSpace(*body.EditorEmail)
 		}
-		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor, patch.Changes)
+		notes := patch.Changes
+		if !changeText(notes) {
+			if filled, nerr := changesForPatch(patch); nerr == nil {
+				notes = filled
+			}
+		}
+		s.announceEdited(r.Context(), detail.Quest, out, body.Announce, actor, notes)
 	}
 	writeJSON(w, http.StatusOK, s.withSignedCoverURL(withSagaImageURL(out)))
 }
@@ -615,6 +644,8 @@ type questBody struct {
 	Announce *bool `json:"announce"`
 	// ImageBase64 is an optional cover. The bytes are stored and attached to the announcement.
 	ImageBase64 string `json:"image_base64"`
+	// ImageURL is an https cover the API fetches itself.
+	ImageURL string `json:"image_url,omitempty"`
 }
 
 type questPatchBody struct {
@@ -638,6 +669,8 @@ type questPatchBody struct {
 	Chain                json.RawMessage `json:"chain"`
 	// Announce skips the webhook when false. Omitted posts a version note or a retirement.
 	Announce *bool `json:"announce"`
+	// ImageURL is an https cover the API fetches itself. A cover-only value does not bump the version.
+	ImageURL string `json:"image_url,omitempty"`
 }
 
 func (s *Server) applyAdminQuestImage(ctx context.Context, q contract.Quest, image []byte, contentType string) (contract.Quest, error) {
@@ -705,6 +738,7 @@ func readQuestCreate(w http.ResponseWriter, r *http.Request) (questBody, []byte,
 			b := formBool(v[0])
 			body.Announce = &b
 		}
+		body.ImageURL = r.FormValue("image_url")
 		img, imgCT, err := optionalFormImage(r)
 		return body, img, imgCT, err
 	}
@@ -776,6 +810,9 @@ func readQuestPatch(w http.ResponseWriter, r *http.Request) (questPatchBody, []b
 				return body, nil, "", errors.New("assigned_character_ids must be JSON array")
 			}
 			body.AssignedCharacterIDs = &ids
+		}
+		if v, ok := r.MultipartForm.Value["image_url"]; ok {
+			body.ImageURL = v[0]
 		}
 		img, imgCT, err := optionalFormImage(r)
 		return body, img, imgCT, err
