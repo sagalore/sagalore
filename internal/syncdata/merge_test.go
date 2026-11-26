@@ -179,7 +179,7 @@ func TestDurationAndLeaderboardLua(t *testing.T) {
 	if len(entries) != 1 || len(entries[0].CompletedBy) != 1 || entries[0].CompletedBy[0].DurationSec == nil || *entries[0].CompletedBy[0].DurationSec != 90 {
 		t.Fatalf("%+v", entries)
 	}
-	lua := WriteSyncLua(sync.BattleTag, "t", entries, "", "", sync.Groups, nil, sync.Characters, sync.Leaderboards)
+	lua := WriteSyncLua(sync.BattleTag, "t", entries, "", "", sync.Groups, nil, sync.Characters, sync.Leaderboards, 2)
 	if !strings.Contains(lua, "duration_sec = 90") || !strings.Contains(lua, `period = "week"`) || !strings.Contains(lua, `name = "Magni"`) {
 		t.Fatal(lua)
 	}

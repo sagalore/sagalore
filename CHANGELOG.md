@@ -1,5 +1,9 @@
 # Changelog
 
+## Protocol handshake
+
+The API, companion, and addon share an integer protocol (`X-Sagalore-Protocol`, advertised on `GET /v1/sync` as `protocol.version` / `min` / `max`). The server accepts the current value and the previous one. A companion below that range gets `426 upgrade_required` and is asked to update, then `/reload`. The addon shows the same update message when saved data is newer than its code, and labels unknown saga steps as needing a newer version.
+
 ## Webhook delivery retries
 
 Outbound group webhooks retry on HTTP `429`/`5xx` and transport errors (honour `Retry-After`, exponential backoff). Deliveries are spaced ~750ms on a single worker so Discord rate limits are less likely during multi-saga creates. See [docs/webhooks.md](docs/webhooks.md).

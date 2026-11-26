@@ -78,6 +78,8 @@ Shareable alternative to naming a character. Targeted invites (`POST …/invites
 
 `GET /v1/sync` returns sagas in groups the player belongs to, that player's progress, and completions limited to those groups. Party credit for a kill counts only characters whose accounts are members of the same group.
 
+The response includes `protocol` (`version`, `min`, `max`). Companions send `X-Sagalore-Protocol` on every call. A missing header is protocol 1. The server accepts the current protocol and the previous one. Older or newer explicit values get `426` with `upgrade_required` or `protocol_mismatch` and a message to update, then `/reload`. The companion writes `protocol` into `SagaloreData.lua`. The addon shows "update required" when that number is newer than the addon, and a saga step it does not understand is labelled as needing a newer version instead of being tracked.
+
 `POST /v1/sagas` — any member. Body field `group` is a slug when it is a string. If the player is in exactly one group it may be omitted. Non-members get `403`.
 
 `PATCH /v1/sagas/{id}` — the author. `changes` is required when the text changes. A cover-only upload does not bump the version.

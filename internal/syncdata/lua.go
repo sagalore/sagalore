@@ -10,17 +10,22 @@ import (
 
 // WriteLua renders SagaloreData.lua. The addon reads this file at load /reload.
 func WriteLua(battletag, generatedAt string, entries []Entry) string {
-	return WriteLuaFile(battletag, generatedAt, entries, "", "")
+	return WriteLuaFile(battletag, generatedAt, entries, "", "", contract.ProtocolVersion)
 }
 
 // WriteLuaFile is WriteLua plus an optional one-shot notice. The addon shows
-// notice once, after /reload, when notice_id changes.
-func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, noticeID string) string {
+// notice once, after /reload, when notice_id changes. protocol is the wire
+// protocol the data was written with (the server's current protocol).
+func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, noticeID string, protocol int) string {
+	if protocol < 1 {
+		protocol = 1
+	}
 	var b strings.Builder
 	b.WriteString("-- Written by the Sagalore companion. Do not edit by hand.\n")
 	b.WriteString("-- Type /reload to load new sagas.\n")
 	b.WriteString("SagaloreData = {\n")
 	b.WriteString("  version = 1,\n")
+	fmt.Fprintf(&b, "  protocol = %d,\n", protocol)
 	fmt.Fprintf(&b, "  battletag = %s,\n", luaString(battletag))
 	fmt.Fprintf(&b, "  generated_at = %s,\n", luaString(generatedAt))
 	if notice != "" && noticeID != "" {
@@ -99,8 +104,8 @@ func WriteLuaFile(battletag, generatedAt string, entries []Entry, notice, notice
 }
 
 // WriteSyncLua is WriteLuaFile plus groups, invites, and character participation.
-func WriteSyncLua(battletag, generatedAt string, entries []Entry, notice, noticeID string, groups []contract.GroupSummary, invites []contract.Invite, characters []contract.Character, leaderboards []contract.Leaderboard) string {
-	body := WriteLuaFile(battletag, generatedAt, entries, notice, noticeID)
+func WriteSyncLua(battletag, generatedAt string, entries []Entry, notice, noticeID string, groups []contract.GroupSummary, invites []contract.Invite, characters []contract.Character, leaderboards []contract.Leaderboard, protocol int) string {
+	body := WriteLuaFile(battletag, generatedAt, entries, notice, noticeID, protocol)
 	// WriteLuaFile closes the table. Replace the final closing brace with the extra sections.
 	const close = "}\n"
 	if !strings.HasSuffix(body, close) {
