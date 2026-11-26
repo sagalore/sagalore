@@ -15,6 +15,8 @@
 -- accumulate. The composite itself stays done once it has been true.
 -- memory visit latches. memory hold is true only while the world matches.
 -- go/location default to visit. item/collect default to hold. Events are visit.
+-- show_count false on an item or collect step hides the log's (have/need)
+-- suffix and the appended item name. The count is still tracked.
 -- A sequence is one step: ordered beats, one within_sec window from the first beat.
 -- A kill with group.level latches only when every member is that exact level
 -- and has attested within 15 seconds of the death.
@@ -1122,6 +1124,18 @@ function M.noteSagaStart(bucket, steps, now)
     end
     bucket.started_at = at
     return true
+end
+
+-- hideItemChrome is true when an item step should show its text alone.
+-- Kill, level, and instance_run counts stay visible.
+function M.hideItemChrome(obj)
+    if type(obj) ~= "table" then
+        return false
+    end
+    if obj.type ~= "item" and obj.type ~= "collect" then
+        return false
+    end
+    return obj.show_count == false
 end
 
 M.listed = listed

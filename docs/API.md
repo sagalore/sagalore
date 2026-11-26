@@ -91,7 +91,11 @@ The response includes `protocol` (`version`, `min`, `max`). Companions send `X-S
 
 `POST /v1/sagas` — any member. Body field `group` is a slug when it is a string. If the player is in exactly one group it may be omitted. Non-members get `403`.
 
-`PATCH /v1/sagas/{id}` — the author. `changes` is required when the text changes. A cover-only upload does not bump the version.
+`PATCH /v1/sagas/{id}` — the author. `changes` is a short list of notes stored on the new version. When it is omitted, the server writes one line per changed field (`Updated title`, `Updated description`, `Updated steps`, `Retired saga`, and the same kind of line for the other edited fields). Send `changes` when those words should be the author's. A cover-only upload does not bump the version and does not need `changes`.
+
+`image_url` on `POST /v1/sagas` and `PATCH /v1/sagas/{id}` is an https URL. The API fetches it (public addresses only, port 443, at most 8 MiB, png / jpeg / gif / webp) and stores the bytes. This is the cover path for a client that cannot PUT a presigned upload URL. A presigned upload host may need to be allowed by the chat client in use before that PUT succeeds. The response field `image_url` is still the stored cover path, not the source URL. A cover-only `image_url` does not bump the version.
+
+An item step requires `item_id`. Omitted `count` is stored as 1 so the addon can track it. `memory` defaults to `hold`. `show_count: false` tells the addon to print the step text alone: no `(have/need)` suffix and no item name appended after the text. Omit `show_count` to keep the suffix. See [sagas-api.md](sagas-api.md).
 
 `POST /v1/complete` — the character's account must be a member of the saga's group. Optional `started_at` (RFC3339) is the addon clock when the first goal of that saga gained progress. The server stores `duration_sec` = `completed_at` - `started_at` when the start is not after the finish. Both times are addon-reported and are not checked against the game server. A second finish for the same character and saga stays `already_completed`. The table can hold more than one finish row so repeatable sagas can be added later; that behavior is not enabled.
 

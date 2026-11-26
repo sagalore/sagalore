@@ -1,6 +1,10 @@
 package contract
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func TestNormalizeStepContract(t *testing.T) {
 	level := 17
@@ -31,11 +35,42 @@ func TestNormalizeStepContract(t *testing.T) {
 	if out[2].Count != 1 {
 		t.Fatalf("item count defaulted to %d", out[2].Count)
 	}
+	if out[2].ShowCount != nil {
+		t.Fatal("omitted show_count stays omitted")
+	}
 	if out[3].Beats[0].Emote != "APPLAUD" || out[3].Beats[1].Emote != "RUDE" {
 		t.Fatalf("beats: %+v", out[3].Beats)
 	}
 	if out[4].Group == nil || out[4].Group.Level != 17 || out[4].Memory != MemoryVisit {
 		t.Fatalf("group kill: %+v", out[4])
+	}
+}
+
+func TestItemShowCountFalseKeepsCount(t *testing.T) {
+	item := 4540
+	hide := false
+	show := true
+	out, err := NormalizeObjectives([]Objective{
+		{ID: "bread", Type: "item", Text: "Have bread", ItemID: &item, ShowCount: &hide},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out[0].Count != 1 || out[0].Memory != MemoryHold || out[0].ShowCount == nil || *out[0].ShowCount {
+		t.Fatalf("%+v", out[0])
+	}
+	raw, err := json.Marshal(out[0])
+	if err != nil || !strings.Contains(string(raw), `"show_count":false`) {
+		t.Fatalf("%s %v", raw, err)
+	}
+	out, err = NormalizeObjectives([]Objective{
+		{ID: "bread", Type: "item", Text: "Have bread", ItemID: &item, ShowCount: &show},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out[0].ShowCount != nil {
+		t.Fatal("true is the default and is omitted")
 	}
 }
 

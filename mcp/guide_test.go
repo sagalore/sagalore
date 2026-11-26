@@ -87,6 +87,62 @@ func TestCreateSagaPostsWithoutCreatedBy(t *testing.T) {
 	}
 }
 
+func TestSagaToolDescriptionsNameItemRules(t *testing.T) {
+	create, ok := findTool("create_saga")
+	if !ok {
+		t.Fatal("missing create_saga")
+	}
+	for _, want := range []string{"item_id is required", `memory "hold"`, "show_count false", "image_url", "chat client in use may need that host allowed"} {
+		if !strings.Contains(create.Description, want) {
+			t.Fatalf("create_saga missing %q", want)
+		}
+	}
+	update, ok := findTool("update_saga")
+	if !ok {
+		t.Fatal("missing update_saga")
+	}
+	for _, want := range []string{"item_id", `memory "hold"`, "changes", "image_url", "chat client in use may need that host allowed"} {
+		if !strings.Contains(update.Description, want) {
+			t.Fatalf("update_saga missing %q", want)
+		}
+	}
+	props, _ := update.Schema["properties"].(map[string]any)
+	if props["changes"] == nil || props["image_url"] == nil {
+		t.Fatalf("update_saga schema %+v", props)
+	}
+	get, _ := findTool("get_saga")
+	if !strings.Contains(get.Description, "JSON") {
+		t.Fatal(get.Description)
+	}
+}
+
+func TestCreateSagaForwardsImageURL(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		gotBody = string(raw)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"saga-1"}`))
+	}))
+	defer srv.Close()
+	SetAPI(API{BaseURL: srv.URL, Token: "gst_test", HTTP: srv.Client()})
+	t.Cleanup(func() { SetAPI(APIFromEnv()) })
+
+	tool, _ := findTool("create_saga")
+	if _, err := tool.Call(context.Background(), []byte(`{
+		"title":"Bread",
+		"description":"Hold a loaf.",
+		"party":false,
+		"image_url":"https://cdn.example/cover.png",
+		"objectives":[{"id":"loaf","type":"item","text":"Have bread","item_id":4540,"show_count":false}]
+	}`)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(gotBody, "https://cdn.example/cover.png") || !strings.Contains(gotBody, `"show_count":false`) {
+		t.Fatal(gotBody)
+	}
+}
+
 func TestListGroupsNeedsToken(t *testing.T) {
 	SetAPI(API{BaseURL: "http://127.0.0.1:1", Token: ""})
 	t.Cleanup(func() { SetAPI(APIFromEnv()) })

@@ -651,7 +651,7 @@ func (s *Store) UpdateQuest(ctx context.Context, id string, p QuestPatch) (contr
 	if err != nil {
 		return contract.Quest{}, err
 	}
-	changes, err := normalizeChanges(p.Changes)
+	changes, err := changesForPatch(p)
 	if err != nil {
 		return contract.Quest{}, err
 	}
@@ -850,6 +850,69 @@ func normalizeChanges(in []string) ([]string, error) {
 		return nil, fmt.Errorf("%w: too many changes", ErrInvalid)
 	}
 	return out, nil
+}
+
+// changesForPatch keeps an author-written note when one was sent. When the
+// note is missing, it records one short line per changed field so a client
+// whose schema cannot send `changes` can still edit the saga.
+func changesForPatch(p QuestPatch) ([]string, error) {
+	if changeText(p.Changes) {
+		return normalizeChanges(p.Changes)
+	}
+	var lines []string
+	if p.Title != nil {
+		lines = append(lines, "Updated title")
+	}
+	if p.Description != nil {
+		lines = append(lines, "Updated description")
+	}
+	if p.Objectives != nil {
+		lines = append(lines, "Updated steps")
+	}
+	if p.ObjectivesOrdered != nil {
+		lines = append(lines, "Updated step order")
+	}
+	if p.WhenSet {
+		lines = append(lines, "Updated time window")
+	}
+	if p.GroupSet {
+		lines = append(lines, "Updated group rule")
+	}
+	if p.MinLevelSet {
+		lines = append(lines, "Updated minimum level")
+	}
+	if p.PartyQuest != nil {
+		lines = append(lines, "Updated party")
+	}
+	if p.Active != nil {
+		if *p.Active {
+			lines = append(lines, "Restored saga")
+		} else {
+			lines = append(lines, "Retired saga")
+		}
+	}
+	if p.AssignedCharacterIDs != nil {
+		lines = append(lines, "Updated assignments")
+	}
+	if p.RequiresSet {
+		lines = append(lines, "Updated prerequisites")
+	}
+	if p.ChainSet {
+		lines = append(lines, "Updated chain")
+	}
+	if len(lines) == 0 {
+		return nil, fmt.Errorf("%w: changes required", ErrInvalid)
+	}
+	return lines, nil
+}
+
+func changeText(in []string) bool {
+	for _, line := range in {
+		if strings.TrimSpace(line) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func refs(ids []string) []contract.IDRef {
