@@ -92,7 +92,7 @@ func TestSagaToolDescriptionsNameItemRules(t *testing.T) {
 	if !ok {
 		t.Fatal("missing create_saga")
 	}
-	for _, want := range []string{"item_id is required", `memory "hold"`, "show_count false", "image_url"} {
+	for _, want := range []string{"item_id is required", `memory "hold"`, "show_count false", "image_url", "chat client in use may need that host allowed"} {
 		if !strings.Contains(create.Description, want) {
 			t.Fatalf("create_saga missing %q", want)
 		}
@@ -101,7 +101,7 @@ func TestSagaToolDescriptionsNameItemRules(t *testing.T) {
 	if !ok {
 		t.Fatal("missing update_saga")
 	}
-	for _, want := range []string{"item_id", `memory "hold"`, "changes", "image_url"} {
+	for _, want := range []string{"item_id", `memory "hold"`, "changes", "image_url", "chat client in use may need that host allowed"} {
 		if !strings.Contains(update.Description, want) {
 			t.Fatalf("update_saga missing %q", want)
 		}

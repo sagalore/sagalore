@@ -93,7 +93,7 @@ The response includes `protocol` (`version`, `min`, `max`). Companions send `X-S
 
 `PATCH /v1/sagas/{id}` — the author. `changes` is a short list of notes stored on the new version. When it is omitted, the server writes one line per changed field (`Updated title`, `Updated description`, `Updated steps`, `Retired saga`, and the same kind of line for the other edited fields). Send `changes` when those words should be the author's. A cover-only upload does not bump the version and does not need `changes`.
 
-`image_url` on `POST /v1/sagas` and `PATCH /v1/sagas/{id}` is an https URL. The API fetches it (public addresses only, port 443, at most 8 MiB, png / jpeg / gif / webp) and stores the bytes. This is the cover path for a client that cannot PUT a presigned upload URL. The response field `image_url` is still the stored cover path, not the source URL. A cover-only `image_url` does not bump the version.
+`image_url` on `POST /v1/sagas` and `PATCH /v1/sagas/{id}` is an https URL. The API fetches it (public addresses only, port 443, at most 8 MiB, png / jpeg / gif / webp) and stores the bytes. This is the cover path for a client that cannot PUT a presigned upload URL. A presigned upload host may need to be allowed by the chat client in use before that PUT succeeds. The response field `image_url` is still the stored cover path, not the source URL. A cover-only `image_url` does not bump the version.
 
 An item step requires `item_id`. Omitted `count` is stored as 1 so the addon can track it. `memory` defaults to `hold`. `show_count: false` tells the addon to print the step text alone: no `(have/need)` suffix and no item name appended after the text. Omit `show_count` to keep the suffix. See [sagas-api.md](sagas-api.md).
 

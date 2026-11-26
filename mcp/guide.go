@@ -212,7 +212,7 @@ func guideTools() []Tool {
 				"description": map[string]any{"type": "string"},
 				"objectives":  map[string]any{"type": "array", "description": "Full replacement step list. Same shape as create_saga. Item steps require item_id and default to memory hold. show_count false hides the in-game count suffix."},
 				"changes":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Short notes stored on the new version. Optional: when omitted, the API writes one line per changed field."},
-				"image_url":   map[string]any{"type": "string", "description": "https URL of a png, jpeg, gif, or webp cover (max 8 MiB). The API fetches it. A cover-only call does not bump the version."},
+				"image_url":   map[string]any{"type": "string", "description": "https URL of a png, jpeg, gif, or webp cover (max 8 MiB). The API fetches it, so this client does not PUT the bytes. A presigned upload URL is a different path: the chat client in use may need that host allowed before the PUT succeeds. A cover-only call does not bump the version."},
 				"party":       map[string]any{"type": "boolean"},
 				"active":      map[string]any{"type": "boolean"},
 				"min_level":   map[string]any{"type": "integer"},
@@ -255,7 +255,7 @@ func createSagaSchema() map[string]any {
 		"min_level":              map[string]any{"type": "integer"},
 		"active":                 map[string]any{"type": "boolean", "description": "False keeps it a draft. Omitted means active."},
 		"assigned_character_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-		"image_url":              map[string]any{"type": "string", "description": "https URL of a png, jpeg, gif, or webp cover (max 8 MiB). The API fetches it. Do not send bytes."},
+		"image_url":              map[string]any{"type": "string", "description": "https URL of a png, jpeg, gif, or webp cover (max 8 MiB). The API fetches it, so this client does not PUT the bytes. If a tool returns a presigned upload URL instead, the chat client in use may need that host allowed before the PUT succeeds. Do not send bytes."},
 	}, "title", "description", "party", "objectives")
 }
 
@@ -475,7 +475,7 @@ Use this before update_saga so you send a complete objectives list.`
 const createSagaDescription = `Create a saga as the signed-in player. Do not send created_by.
 
 Required: title, description, party (true or false), objectives (1 to 20 steps).
-Optional: group (tenant slug; omit when the player is in exactly one group), active (false is a draft), min_level, assigned_character_ids, image_url (https cover the API fetches: png, jpeg, gif, or webp, max 8 MiB).
+Optional: group (tenant slug; omit when the player is in exactly one group), active (false is a draft), min_level, assigned_character_ids, image_url (https cover the API fetches: png, jpeg, gif, or webp, max 8 MiB). If a tool returns a presigned upload URL instead, the chat client in use may need that host allowed before the PUT succeeds. When it cannot allow domains, pass image_url.
 
 Example: {"title":"An evening in Goldshire","description":"Visit Lion's Pride Inn.","party":false,"objectives":[{"id":"inn","type":"go","text":"Stand in Goldshire","zone":"Elwynn Forest"}]}.
 
@@ -494,7 +494,7 @@ Constraints: at most 20 steps. id is 1–40 characters (letters, digits, undersc
 const updateSagaDescription = `Patch a saga the signed-in player authored. Only sagas they can edit are accepted.
 
 Example: {"saga_id":"<id>","title":"An evening in Goldshire","changes":["Clearer title"]}.
-When steps change, send the full objectives array (same types and constraints as create_saga), not a single edited step. Item steps require item_id and default to memory "hold". show_count false hides the in-game count suffix. Text or step changes bump the saga version. changes is an optional list of short notes; when it is omitted the API stores one line per changed field (for example "Updated title"). Send changes when those words should be yours. image_url is an https cover the API fetches (png, jpeg, gif, or webp, max 8 MiB). A cover-only patch does not bump the version. Players who already loaded the old version keep that version until they /reload. Do not send created_by.`
+When steps change, send the full objectives array (same types and constraints as create_saga), not a single edited step. Item steps require item_id and default to memory "hold". show_count false hides the in-game count suffix. Text or step changes bump the saga version. changes is an optional list of short notes; when it is omitted the API stores one line per changed field (for example "Updated title"). Send changes when those words should be yours. image_url is an https cover the API fetches (png, jpeg, gif, or webp, max 8 MiB). If a tool returns a presigned upload URL instead, the chat client in use may need that host allowed before the PUT succeeds. When it cannot allow domains, pass image_url. A cover-only patch does not bump the version. Players who already loaded the old version keep that version until they /reload. Do not send created_by.`
 
 const archiveSagaDescription = `Retire a saga the player authored so companions stop offering it (active=false).
 

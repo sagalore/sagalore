@@ -6,7 +6,7 @@
 
 ## Cover from an image URL
 
-`POST /v1/sagas` and `PATCH /v1/sagas/{id}` accept `image_url`, an https URL the API fetches itself. The host must be public, the port is 443, and the body must be a png, jpeg, gif, or webp of at most 8 MiB. A cover-only `image_url` does not bump the version. The response field `image_url` remains the stored cover path. See [docs/sagas-api.md](docs/sagas-api.md).
+`POST /v1/sagas` and `PATCH /v1/sagas/{id}` accept `image_url`, an https URL the API fetches itself. The host must be public, the port is 443, and the body must be a png, jpeg, gif, or webp of at most 8 MiB. A cover-only `image_url` does not bump the version. The response field `image_url` remains the stored cover path. A presigned upload URL is separate: the chat client in use may need that host allowed before the PUT succeeds. See [docs/sagas-api.md](docs/sagas-api.md).
 
 ## Item steps can hide the count
 
