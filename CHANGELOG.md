@@ -1,5 +1,9 @@
 # Changelog
 
+## Group admin console
+
+Owners manage groups in the browser at `/groups` on the API host (Battle.net sign-in, same chrome as `/join/{token}`). The page creates a group, edits its name and locale (`PATCH /v1/groups/{id}`), invites a character by name and realm, mints and revokes join links, approves or rejects gated requests, and removes members. Only the owner can open a group's management page. Personal groups stay invite-free. Characters are not created or edited here. See [docs/API.md](docs/API.md).
+
 ## MCP feedback
 
 `submit_feedback` on `cmd/sagalore-mcp` opens a GitHub issue labelled `feedback` using `SAGALORE_GITHUB_TOKEN` (repo `SAGALORE_FEEDBACK_REPO`, default `sagalore/sagalore`). Reports are rate-limited. The issue contains the text the user wrote, not their BattleTag or email, unless they typed those themselves.

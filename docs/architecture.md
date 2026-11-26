@@ -20,6 +20,7 @@ Sagalore is three programs that share one product name.
 
 - Auth, groups, sagas, sync, leaderboards, group webhooks (JSON), OAuth for external clients.
 - Shareable join links (`/join/{token}` HTML + `/v1/join/{token}` JSON) reuse the same OAuth page chrome; marketing may deep-link here but does not own redeem.
+- Group owners manage membership at `/groups` (same chrome and Battle.net sign-in). The marketing site does not host that console.
 - Realtime: Postgres `NOTIFY` on `sagalore_events`, one dedicated `LISTEN` connection per API process, WebSocket fan-out to companions.
 - Hosted convenience at `api.sagalore.app`; self-host with Compose or any Postgres-backed host. Docs stay host-provider agnostic.
 - Marketing site is a separate repo ([sagalore/website](https://github.com/sagalore/website)); the API does not serve it.
