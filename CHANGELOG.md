@@ -1,5 +1,9 @@
 # Changelog
 
+## MCP guide
+
+`cmd/sagalore-mcp` is a stdio MCP server. Every tool description includes an example. `how_it_works` explains the addon, the companion, Battle.net sync, objective types, and `/reload`. `SAGALORE_TOKEN` is a personal token; `SAGALORE_API_URL` defaults to `https://api.sagalore.app`.
+
 ## Character data is sync-only
 
 Admin create, patch, and delete of characters return `403 character_readonly`. Name, realm, race, class, and level are written by the signed-in companion (`PUT /v1/characters` and `POST /v1/level`). The owner may still set `backstory` with `PATCH /v1/characters/{id}`.
